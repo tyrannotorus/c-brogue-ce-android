@@ -3,16 +3,18 @@ Brogue CE (Android)
 This is a personal modern fork of Brogue CE built for Android.
 You may play it. It is unsupported. Pull requests welcome.
 
-Changes:
+### Changes:
 - Mobile-friendly Title Screen with singular Play option (other options removed for now).
 - Brogue dungeon is scaled to 2x.
 - Brogue menus remain at 1x.
 - Android Menu overlay, including a mouse toggle.
 - Swipe gestures for movement.
 
-APK Releases:
+### APK Releases:
 - Get them here!
   https://github.com/tyrannotorus/c-brogue-ce-android/releases
+
+### Screenshots:
 
 ![Screenshot_20260323_201423_Brogue CE](https://github.com/user-attachments/assets/281b4ae6-6d50-456d-9471-6492a44f94d1)
 
