@@ -1170,6 +1170,41 @@ void saveGameNoPrompt() {
     rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
     rogue.recording = false;
 }
+
+// Fixed single-slot save for mobile. Saves to ANDROID_SAVE_NAME.broguesave
+// with no filename prompt, then ends the game.
+void androidSaveGameAndExit(void) {
+    char filePath[BROGUE_FILENAME_MAX];
+    if (rogue.playbackMode) {
+        return;
+    }
+    snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+    flushBufferToFile();
+    remove(filePath); // Remove any previous save at this path.
+    rename(currentFilePath, filePath);
+    strcpy(currentFilePath, filePath);
+    rogue.gameHasEnded = true;
+    rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
+    rogue.nextGame = NG_QUIT; // Exit the app, don't return to title screen.
+    rogue.recording = false;
+}
+
+// Delete the fixed save file so the next launch starts a new game.
+void androidAbandonGame(void) {
+    char filePath[BROGUE_FILENAME_MAX];
+    snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+    remove(filePath);
+    rogue.quit = true;
+    gameOver("Quit", true);
+}
+
+// Check whether the fixed mobile save file exists.
+boolean androidSaveFileExists(void) {
+    char filePath[BROGUE_FILENAME_MAX];
+    snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+    return fileExists(filePath);
+}
+
 #define MAX_TEXT_INPUT_FILENAME_LENGTH (COLS - 12) // max length including the suffix
 
 void saveGame() {

@@ -104,6 +104,7 @@ typedef long long fixpt;
 
 // recording and save filenames
 #define LAST_GAME_NAME          "LastGame"
+#define ANDROID_SAVE_NAME       "BrogueCE"  // Fixed single-slot save for mobile
 #define LAST_RECORDING_NAME     "LastRecording"
 #define RECORDING_SUFFIX        ".broguerec"
 #define GAME_SUFFIX             ".broguesave"
@@ -3467,6 +3468,9 @@ extern "C" {
     boolean characterForbiddenInFilename(const char theChar);
     void saveGame(void);
     void saveGameNoPrompt(void);
+    void androidSaveGameAndExit(void);
+    void androidAbandonGame(void);
+    boolean androidSaveFileExists(void);
     void saveRecording(char *filePath);
     void saveRecordingNoPrompt(char *filePath);
     void parseFile(void);

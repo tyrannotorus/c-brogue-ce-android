@@ -28,6 +28,7 @@
 #include "GlobalsBase.h"
 #include "Globals.h"
 #include "platform.h"
+#include "android-touch.h"
 
 #define D_DISABLE_BACKGROUND_COLORS     (WIZARD_MODE && 0)
 
@@ -2730,8 +2731,8 @@ void executeKeystroke(signed long keystroke, boolean controlKey, boolean shiftKe
             if (rogue.playbackMode || serverMode) {
                 return;
             }
-            if (confirm("Save this game and exit?", false)) {
-                saveGame();
+            if (confirm("Save and exit?", false)) {
+                androidSaveGameAndExit();
             }
             break;
         case NEW_GAME_KEY:
@@ -2741,10 +2742,8 @@ void executeKeystroke(signed long keystroke, boolean controlKey, boolean shiftKe
             }
             break;
         case QUIT_KEY:
-            if (confirm("Quit and abandon this game? (The save will be deleted.)", false)) {
-                recordKeystroke(QUIT_KEY, false, false);
-                rogue.quit = true;
-                gameOver("Quit", true);
+            if (confirm("Abandon this game? Progress will be lost.", false)) {
+                androidAbandonGame();
             }
             break;
         case GRAPHICS_KEY:
@@ -2829,127 +2828,63 @@ boolean getInputTextString(char *inputText,
                            const char *promptSuffix,
                            short textEntryType,
                            boolean useDialogBox) {
-    short charNum, i, x, y, promptSuffixLen, defaultEntrylengthOverflow;
-    char keystroke, suffix[100];
-    const short textEntryBounds[TEXT_INPUT_TYPES][2] = {{' ', '~'}, {' ', '~'}, {'0', '9'}};
-    screenDisplayBuffer dbuf;
-    SavedDisplayBuffer rbuf;
-
-    // handle defaultEntry values exceeding maxLength
-    promptSuffixLen = strlen(promptSuffix);
-    defaultEntrylengthOverflow = strlen(defaultEntry) + promptSuffixLen - maxLength;
-    if(defaultEntrylengthOverflow > 0) {
-        defaultEntry[strlen(defaultEntry) - defaultEntrylengthOverflow] = '\0';
+    // Use the native Android text input dialog instead of in-game rendering.
+    // Strip trailing punctuation from prompt for a cleaner dialog title
+    // (e.g. 'call them: "' → 'call them').
+    char cleanPrompt[COLS * 3];
+    strncpy(cleanPrompt, prompt, sizeof(cleanPrompt) - 1);
+    cleanPrompt[sizeof(cleanPrompt) - 1] = '\0';
+    // Trim trailing whitespace and punctuation like : " from the prompt.
+    int len = (int)strlen(cleanPrompt);
+    while (len > 0 && (cleanPrompt[len-1] == ' ' || cleanPrompt[len-1] == ':'
+                        || cleanPrompt[len-1] == '"')) {
+        cleanPrompt[--len] = '\0';
+    }
+    // Capitalize first letter.
+    if (cleanPrompt[0] >= 'a' && cleanPrompt[0] <= 'z') {
+        cleanPrompt[0] -= 'a' - 'A';
     }
 
-    if (useDialogBox) enterModalMode();
-    // x and y mark the origin for text entry.
-    if (useDialogBox) {
-        x = (COLS - max(maxLength, strLenWithoutEscapes(prompt))) / 2;
-        y = ROWS / 2 - 1;
-        clearDisplayBuffer(&dbuf);
-        rectangularShading(x - 1, y - 2, max(maxLength, strLenWithoutEscapes(prompt)) + 2,
-                           4, &interfaceBoxColor, INTERFACE_OPACITY, &dbuf);
-        rbuf = saveDisplayBuffer();
-        overlayDisplayBuffer(&dbuf);
-        printString(prompt, x, y - 1, &white, &interfaceBoxColor, NULL);
-        for (i=0; i<maxLength; i++) {
-            plotCharWithColor(' ', (windowpos){ x + i, y }, &black, &black);
-        }
-        printString(defaultEntry, x, y, &white, &black, 0);
+    char resultBuf[256];
+    boolean confirmed = androidGetTextInput(cleanPrompt, defaultEntry, maxLength, resultBuf);
+
+    if (confirmed) {
+        strcpy(inputText, resultBuf);
+        strcat(displayedMessage[0], inputText);
+        strcat(displayedMessage[0], promptSuffix);
+        return true;
     } else {
-        confirmMessages();
-        x = mapToWindowX(strLenWithoutEscapes(prompt));
-        y = MESSAGE_LINES - 1;
-        temporaryMessage(prompt, 0);
-        printString(defaultEntry, x, y, &white, &black, 0);
-    }
-
-    maxLength = min(maxLength, COLS - x);
-
-
-    if (inputText != defaultEntry) {
-        strcpy(inputText, defaultEntry);
-    }
-    charNum = strLenWithoutEscapes(inputText);
-    for (i = charNum; i < maxLength; i++) {
-        inputText[i] = ' ';
-    }
-
-    if (promptSuffix[0] == '\0') { // empty suffix
-        strcpy(suffix, " "); // so that deleting doesn't leave a white trail
-    } else {
-        strcpy(suffix, promptSuffix);
-    }
-
-    do {
-        printString(suffix, charNum + x, y, &gray, &black, 0);
-        plotCharWithColor((suffix[0] ? suffix[0] : ' '), (windowpos){ x + charNum, y }, &black, &white);
-        keystroke = nextKeyPress(true);
-        if (keystroke == DELETE_KEY && charNum > 0) {
-            printString(suffix, charNum + x - 1, y, &gray, &black, 0);
-            plotCharWithColor(' ', (windowpos){ x + charNum + strlen(suffix) - 1, y }, &black, &black);
-            charNum--;
-            inputText[charNum] = ' ';
-        } else if (keystroke >= textEntryBounds[textEntryType][0]
-                   && keystroke <= textEntryBounds[textEntryType][1]) { // allow only permitted input
-
-            if (textEntryType == TEXT_INPUT_FILENAME
-                && characterForbiddenInFilename(keystroke)) {
-
-                keystroke = '-';
-            }
-
-            inputText[charNum] = keystroke;
-            plotCharWithColor(keystroke, (windowpos){ x + charNum, y }, &white, &black);
-            if (charNum < maxLength - promptSuffixLen) {
-                printString(suffix, charNum + x + 1, y, &gray, &black, 0);
-                charNum++;
-            }
-        }
-#ifdef USE_CLIPBOARD
-        else if (keystroke == TAB_KEY) {
-            char* clipboard = getClipboard();
-            for (int i=0; i<(int) min(strlen(clipboard), (unsigned long) (maxLength - charNum)); ++i) {
-
-                char character = clipboard[i];
-
-                if (character >= textEntryBounds[textEntryType][0]
-                    && character <= textEntryBounds[textEntryType][1]) { // allow only permitted input
-                    if (textEntryType == TEXT_INPUT_FILENAME
-                        && characterForbiddenInFilename(character)) {
-                        character = '-';
-                    }
-                    plotCharWithColor(character, (windowpos){ x + charNum, y }, &white, &black);
-                    if (charNum < maxLength) {
-                        charNum++;
-                    }
-                }
-            }
-        }
-#endif
-    } while (keystroke != RETURN_KEY && keystroke != ESCAPE_KEY);
-
-    if (useDialogBox) {
-        restoreDisplayBuffer(&rbuf);
-        exitModalMode();
-    }
-
-    inputText[charNum] = '\0';
-
-    if (keystroke == ESCAPE_KEY) {
+        inputText[0] = '\0';
         return false;
     }
-    strcat(displayedMessage[0], inputText);
-    strcat(displayedMessage[0], suffix);
-    return true;
+}
+
+// Write a cell to the UI display buffer and push it to the UI tile layer.
+static void plotToUI(enum displayGlyph ch, short wx, short wy,
+                     const color *fore, const color *back) {
+    cellDisplayBuffer *target = &uiDisplayBuffer.cells[wx][wy];
+    target->character = ch;
+    target->foreColorComponents[0] = fore->red;
+    target->foreColorComponents[1] = fore->green;
+    target->foreColorComponents[2] = fore->blue;
+    target->backColorComponents[0] = back->red;
+    target->backColorComponents[1] = back->green;
+    target->backColorComponents[2] = back->blue;
+    boolean wasUI = plotToUiLayer;
+    plotToUiLayer = true;
+    plotChar(ch, wx, wy, fore->red, fore->green, fore->blue,
+             back->red, back->green, back->blue);
+    plotToUiLayer = wasUI;
 }
 
 void displayCenteredAlert(char *message) {
-    printString(message, (COLS - strLenWithoutEscapes(message)) / 2, ROWS / 2, &teal, &black, 0);
+    short x = (COLS - strLenWithoutEscapes(message)) / 2;
+    short y = ROWS / 2;
+    for (int i = 0; message[i]; i++) {
+        plotToUI(message[i], x + i, y, &teal, &black);
+    }
 }
 
-// Flashes a message on the screen starting at (x, y) lasting for the given time (in ms) and with the given colors.
 void flashMessage(char *message, short x, short y, int time, const color *fColor, const color *bColor) {
     boolean fastForward;
     int     i, j, messageLength, percentComplete, previousPercentComplete;
@@ -2996,7 +2931,7 @@ void flashMessage(char *message, short x, short y, int time, const color *fColor
                     foreColor = colorFromComponents(dbufs[j].foreColorComponents);
                     applyColorAverage(&foreColor, &backColor, (100 - percentComplete) * 2);
                 }
-                plotCharWithColor(dchar, (windowpos){ j+x, y }, &foreColor, &backColor);
+                plotToUI(dchar, j+x, y, &foreColor, &backColor);
             }
         }
         previousPercentComplete = percentComplete;
@@ -3004,7 +2939,7 @@ void flashMessage(char *message, short x, short y, int time, const color *fColor
     }
     for (j=0; j<messageLength; j++) {
         foreColor = colorFromComponents(dbufs[j].foreColorComponents);
-        plotCharWithColor(dbufs[j].character, (windowpos){ j+x, y }, &foreColor, &(backColors[j]));
+        plotToUI(dbufs[j].character, j+x, y, &foreColor, &(backColors[j]));
     }
 
     restoreRNG;
