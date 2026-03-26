@@ -225,7 +225,14 @@ static void titleMenu() {
             drawTitleFlames(flames, mask);
             if (pauseBrogue(MENU_FLAME_UPDATE_DELAY, (PauseBehavior){.interuptForMouseMove = true})) {
                 nextBrogueEvent(&theEvent, true, false, true);
-                rogue.nextGame = NG_NEW_GAME;
+                // Auto-load the fixed save file if it exists, otherwise new game.
+                if (androidSaveFileExists()) {
+                    rogue.nextGame = NG_OPEN_GAME;
+                    snprintf(rogue.nextGamePath, sizeof(rogue.nextGamePath),
+                             "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+                } else {
+                    rogue.nextGame = NG_NEW_GAME;
+                }
             }
         } else {
             pauseBrogue(MENU_FLAME_UPDATE_DELAY, PAUSE_BEHAVIOR_DEFAULT);

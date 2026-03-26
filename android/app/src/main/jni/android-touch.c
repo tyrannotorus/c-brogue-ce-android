@@ -18,6 +18,8 @@
 #include <SDL.h>
 #include <jni.h>
 #include <math.h>
+#include <pthread.h>
+#include <string.h>
 #include "platform.h"
 #include "Rogue.h"
 #include "tiles.h"
@@ -91,6 +93,73 @@ void androidHideInventory(void) {
     if (mid) (*env)->CallVoidMethod(env, activity, mid);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
+}
+
+/* ---- Native text input dialog ---- */
+
+static pthread_mutex_t textInputMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  textInputCond  = PTHREAD_COND_INITIALIZER;
+static boolean textInputReady = false;
+static boolean textInputConfirmed = false;
+static char    textInputResult[256];
+
+boolean androidGetTextInput(const char *prompt, const char *defaultText,
+                            int maxLen, char *outBuf) {
+    outBuf[0] = '\0';
+
+    pthread_mutex_lock(&textInputMutex);
+    textInputReady = false;
+    textInputConfirmed = false;
+    textInputResult[0] = '\0';
+    pthread_mutex_unlock(&textInputMutex);
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jstring jPrompt = (*env)->NewStringUTF(env, prompt);
+    jstring jDefault = (*env)->NewStringUTF(env, defaultText);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "showTextInputDialog",
+        "(Ljava/lang/String;Ljava/lang/String;I)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, jPrompt, jDefault, (jint)maxLen);
+    (*env)->DeleteLocalRef(env, jPrompt);
+    (*env)->DeleteLocalRef(env, jDefault);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+
+    /* Block until the Java dialog signals a result. */
+    pthread_mutex_lock(&textInputMutex);
+    while (!textInputReady) {
+        pthread_cond_wait(&textInputCond, &textInputMutex);
+    }
+    boolean confirmed = textInputConfirmed;
+    if (confirmed) {
+        int len = (int)strlen(textInputResult);
+        if (len >= maxLen) len = maxLen - 1;
+        memcpy(outBuf, textInputResult, len);
+        outBuf[len] = '\0';
+    }
+    pthread_mutex_unlock(&textInputMutex);
+
+    return confirmed;
+}
+
+/* Called from Java when the text input dialog is dismissed. */
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeTextInputResult(
+        JNIEnv *env, jobject thiz, jboolean confirmed, jstring text) {
+    pthread_mutex_lock(&textInputMutex);
+    textInputConfirmed = (boolean)confirmed;
+    if (confirmed && text) {
+        const char *utf = (*env)->GetStringUTFChars(env, text, NULL);
+        strncpy(textInputResult, utf, sizeof(textInputResult) - 1);
+        textInputResult[sizeof(textInputResult) - 1] = '\0';
+        (*env)->ReleaseStringUTFChars(env, text, utf);
+    } else {
+        textInputResult[0] = '\0';
+    }
+    textInputReady = true;
+    pthread_cond_signal(&textInputCond);
+    pthread_mutex_unlock(&textInputMutex);
 }
 
 float androidZoomLevel = 2.0f;

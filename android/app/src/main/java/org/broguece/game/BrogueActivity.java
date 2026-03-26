@@ -23,8 +23,12 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.EditText;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.app.AlertDialog;
+import android.text.InputFilter;
+import android.text.InputType;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -75,26 +79,29 @@ public class BrogueActivity extends SDLActivity {
 
         Button actionsBtn = makeBarButton("Menu");
 
-        String[] subLabels  = {"Inventory", "Search", "Rest", "Explore"};
-        int[] subKeyCodes   = {
-            KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_Z,
-            KeyEvent.KEYCODE_X
-        };
-        String[] subHints   = {"i", "s", "z", "x"};
+        // Inventory
+        View inventoryItem = makeSubmenuItem("Inventory", "i");
+        inventoryItem.setOnClickListener(v -> {
+            sendKey(KeyEvent.KEYCODE_I);
+            collapseSubmenu(submenu, actionsBtn);
+        });
+        LinearLayout.LayoutParams invP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        invP.setMargins(0, dpToPx(1), 0, dpToPx(1));
+        submenu.addView(inventoryItem, invP);
 
-        for (int i = 0; i < subLabels.length; i++) {
-            View item = makeSubmenuItem(subLabels[i], subHints[i]);
-            final int keyCode = subKeyCodes[i];
-            item.setOnClickListener(v -> {
-                sendKey(keyCode);
-                collapseSubmenu(submenu, actionsBtn);
-            });
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-            p.setMargins(0, dpToPx(1), 0, dpToPx(1));
-            submenu.addView(item, p);
-        }
+        // Actions opens native panel
+        View actionsItem = makeSubmenuItem("Actions", "");
+        actionsItem.setOnClickListener(v -> {
+            collapseSubmenu(submenu, actionsBtn);
+            showActionsPanel();
+        });
+        LinearLayout.LayoutParams actionsP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        actionsP.setMargins(0, dpToPx(1), 0, dpToPx(1));
+        submenu.addView(actionsItem, actionsP);
 
         // Settings opens native panel
         View settingsItem = makeSubmenuItem("Settings", "");
@@ -105,8 +112,28 @@ public class BrogueActivity extends SDLActivity {
         LinearLayout.LayoutParams settingsP = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
-        settingsP.setMargins(0, dpToPx(4), 0, dpToPx(1));
+        settingsP.setMargins(0, dpToPx(1), 0, dpToPx(1));
         submenu.addView(settingsItem, settingsP);
+
+        // Divider before Exit
+        View menuDivider = new View(this);
+        menuDivider.setBackgroundColor(BORDER_DIM);
+        LinearLayout.LayoutParams divP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        divP.setMargins(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+        submenu.addView(menuDivider, divP);
+
+        // Exit opens native panel
+        View exitItem = makeSubmenuItem("Exit", "");
+        exitItem.setOnClickListener(v -> {
+            collapseSubmenu(submenu, actionsBtn);
+            showExitPanel();
+        });
+        LinearLayout.LayoutParams exitP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        exitP.setMargins(0, dpToPx(1), 0, dpToPx(1));
+        submenu.addView(exitItem, exitP);
 
         // Bottom bar
         LinearLayout bottomBar = new LinearLayout(this);
@@ -234,19 +261,6 @@ public class BrogueActivity extends SDLActivity {
         hSepP.setMargins(dpToPx(4), 0, dpToPx(4), dpToPx(8));
         panel.addView(headerSep, hSepP);
 
-        // Actions section
-        addSettingsAction(panel, "Rest Until Better", v -> {
-            hideSettingsPanel();
-            sendChar('Z');
-        });
-        addSettingsAction(panel, "Autopilot", v -> {
-            hideSettingsPanel();
-            sendChar('A');
-        });
-
-        // Separator
-        addSettingsSeparator(panel);
-
         // Toggles section
         addSettingsAction(panel, "Hide Color Effects", v -> {
             hideSettingsPanel();
@@ -268,15 +282,6 @@ public class BrogueActivity extends SDLActivity {
         addSettingsAction(panel, "View Dungeon Seed", v -> {
             hideSettingsPanel();
             sendChar('~');
-        });
-
-        // Separator
-        addSettingsSeparator(panel);
-
-        // Exit
-        addSettingsAction(panel, "Exit Game", v -> {
-            hideSettingsPanel();
-            finishAndRemoveTask();
         });
 
         int panelWidth = Math.min(dpToPx(280),
@@ -301,6 +306,230 @@ public class BrogueActivity extends SDLActivity {
     }
 
     private void hideSettingsPanel() {
+        if (inventoryOverlay.getChildCount() < 2) {
+            inventoryOverlay.setVisibility(View.GONE);
+            inventoryOverlay.removeAllViews();
+            return;
+        }
+        View backdrop = inventoryOverlay.getChildAt(0);
+        View panel = inventoryOverlay.getChildAt(1);
+
+        panel.animate()
+            .translationY(dpToPx(30)).alpha(0f)
+            .setDuration(150)
+            .setInterpolator(new DecelerateInterpolator())
+            .start();
+
+        backdrop.animate()
+            .alpha(0f)
+            .setDuration(150)
+            .withEndAction(() -> {
+                inventoryOverlay.setVisibility(View.GONE);
+                inventoryOverlay.removeAllViews();
+            })
+            .start();
+    }
+
+    // ---- Actions panel ----
+
+    private void showActionsPanel() {
+        inventoryOverlay.removeAllViews();
+        currentlyExpandedDetail = null;
+
+        // Backdrop
+        View backdrop = new View(this);
+        backdrop.setBackgroundColor(Color.argb(140, 0, 0, 0));
+        backdrop.setOnClickListener(v -> hideActionsPanel());
+        inventoryOverlay.addView(backdrop, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        backdrop.setAlpha(0f);
+        backdrop.animate().alpha(1f).setDuration(280).start();
+
+        // Panel
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(10);
+        panel.setPadding(pad, pad, pad, pad);
+
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setShape(GradientDrawable.RECTANGLE);
+        panelBg.setCornerRadii(new float[]{
+            dpToPx(4), dpToPx(4), 0, 0, 0, 0, dpToPx(4), dpToPx(4)});
+        panelBg.setColor(INVENTORY_BG);
+        panelBg.setStroke(1, BORDER_DIM);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setBackground(panelBg);
+        scrollView.addView(panel);
+
+        // Header
+        TextView header = new TextView(this);
+        header.setText("ACTIONS");
+        header.setTextColor(FLAME_EMBER);
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        header.setLetterSpacing(0.15f);
+        header.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(4));
+        panel.addView(header);
+
+        View headerSep = new View(this);
+        GradientDrawable sepGrad = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+        headerSep.setBackground(sepGrad);
+        LinearLayout.LayoutParams hSepP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        hSepP.setMargins(dpToPx(4), 0, dpToPx(4), dpToPx(8));
+        panel.addView(headerSep, hSepP);
+
+        addSettingsAction(panel, "Search", v -> {
+            hideActionsPanel();
+            sendChar('s');
+        });
+        addSettingsAction(panel, "Explore", v -> {
+            hideActionsPanel();
+            sendChar('x');
+        });
+        addSettingsAction(panel, "Rest Until Better", v -> {
+            hideActionsPanel();
+            sendChar('Z');
+        });
+        addSettingsAction(panel, "Autopilot", v -> {
+            hideActionsPanel();
+            sendChar('A');
+        });
+
+        int panelWidth = Math.min(dpToPx(280),
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.6f));
+
+        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
+            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | Gravity.END);
+        scrollParams.setMargins(0, dpToPx(8), dpToPx(8), dpToPx(52));
+
+        inventoryOverlay.addView(scrollView, scrollParams);
+        inventoryOverlay.setVisibility(View.VISIBLE);
+
+        // Slide-up animation
+        scrollView.setTranslationY(dpToPx(40));
+        scrollView.setAlpha(0f);
+        scrollView.animate()
+            .translationY(0).alpha(1f)
+            .setDuration(200)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .start();
+    }
+
+    private void hideActionsPanel() {
+        if (inventoryOverlay.getChildCount() < 2) {
+            inventoryOverlay.setVisibility(View.GONE);
+            inventoryOverlay.removeAllViews();
+            return;
+        }
+        View backdrop = inventoryOverlay.getChildAt(0);
+        View panel = inventoryOverlay.getChildAt(1);
+
+        panel.animate()
+            .translationY(dpToPx(30)).alpha(0f)
+            .setDuration(150)
+            .setInterpolator(new DecelerateInterpolator())
+            .start();
+
+        backdrop.animate()
+            .alpha(0f)
+            .setDuration(150)
+            .withEndAction(() -> {
+                inventoryOverlay.setVisibility(View.GONE);
+                inventoryOverlay.removeAllViews();
+            })
+            .start();
+    }
+
+    // ---- Exit panel ----
+
+    private void showExitPanel() {
+        inventoryOverlay.removeAllViews();
+        currentlyExpandedDetail = null;
+
+        View backdrop = new View(this);
+        backdrop.setBackgroundColor(Color.argb(140, 0, 0, 0));
+        backdrop.setOnClickListener(v -> hideExitPanel());
+        inventoryOverlay.addView(backdrop, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+        backdrop.setAlpha(0f);
+        backdrop.animate().alpha(1f).setDuration(280).start();
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(10);
+        panel.setPadding(pad, pad, pad, pad);
+
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setShape(GradientDrawable.RECTANGLE);
+        panelBg.setCornerRadii(new float[]{
+            dpToPx(4), dpToPx(4), 0, 0, 0, 0, dpToPx(4), dpToPx(4)});
+        panelBg.setColor(INVENTORY_BG);
+        panelBg.setStroke(1, BORDER_DIM);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setBackground(panelBg);
+        scrollView.addView(panel);
+
+        TextView header = new TextView(this);
+        header.setText("EXIT");
+        header.setTextColor(FLAME_EMBER);
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        header.setLetterSpacing(0.15f);
+        header.setPadding(dpToPx(4), dpToPx(2), 0, dpToPx(4));
+        panel.addView(header);
+
+        View headerSep = new View(this);
+        GradientDrawable sepGrad = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+        headerSep.setBackground(sepGrad);
+        LinearLayout.LayoutParams hSepP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        hSepP.setMargins(dpToPx(4), 0, dpToPx(4), dpToPx(8));
+        panel.addView(headerSep, hSepP);
+
+        addSettingsAction(panel, "Abandon Game", v -> {
+            hideExitPanel();
+            sendChar('Q');
+        });
+        addSettingsAction(panel, "Save and Exit", v -> {
+            hideExitPanel();
+            sendChar('S');
+        });
+        addSettingsAction(panel, "Exit", v -> {
+            hideExitPanel();
+            finishAndRemoveTask();
+        });
+
+        int panelWidth = Math.min(dpToPx(280),
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.6f));
+
+        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
+            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | Gravity.END);
+        scrollParams.setMargins(0, dpToPx(8), dpToPx(8), dpToPx(52));
+
+        inventoryOverlay.addView(scrollView, scrollParams);
+        inventoryOverlay.setVisibility(View.VISIBLE);
+
+        scrollView.setTranslationY(dpToPx(40));
+        scrollView.setAlpha(0f);
+        scrollView.animate()
+            .translationY(0).alpha(1f)
+            .setDuration(200)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .start();
+    }
+
+    private void hideExitPanel() {
         if (inventoryOverlay.getChildCount() < 2) {
             inventoryOverlay.setVisibility(View.GONE);
             inventoryOverlay.removeAllViews();
@@ -527,6 +756,181 @@ public class BrogueActivity extends SDLActivity {
                 .start();
         });
     }
+
+    // ---- Native text input dialog ----
+
+    // Called from native code (JNI) to show a text input dialog.
+    public void showTextInputDialog(final String prompt, final String defaultText, final int maxLen) {
+        runOnUiThread(() -> {
+            EditText input = new EditText(this);
+            input.setTextColor(GHOST_WHITE);
+            input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            input.setTypeface(Typeface.MONOSPACE);
+            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            input.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(maxLen) });
+            input.setText(defaultText);
+            input.setSelectAllOnFocus(true);
+            input.setHighlightColor(Color.argb(80, 180, 120, 50));
+
+            GradientDrawable inputBg = new GradientDrawable();
+            inputBg.setShape(GradientDrawable.RECTANGLE);
+            inputBg.setCornerRadius(dpToPx(3));
+            inputBg.setColor(Color.argb(255, 20, 17, 42));
+            inputBg.setStroke(1, FLAME_DIM);
+            input.setBackground(inputBg);
+            input.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+
+            // Title
+            TextView titleView = new TextView(this);
+            titleView.setText(prompt);
+            titleView.setTextColor(FLAME_EMBER);
+            titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            titleView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            titleView.setLetterSpacing(0.1f);
+            titleView.setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(8));
+
+            // Button row — inside the layout so they share the modal background
+            LinearLayout buttonRow = new LinearLayout(this);
+            buttonRow.setOrientation(LinearLayout.HORIZONTAL);
+            buttonRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+
+            Button cancelBtn = new Button(this);
+            cancelBtn.setText("CANCEL");
+            cancelBtn.setTextColor(PALE_BLUE);
+            cancelBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            cancelBtn.setTypeface(Typeface.MONOSPACE);
+            cancelBtn.setAllCaps(true);
+            cancelBtn.setStateListAnimator(null);
+            cancelBtn.setElevation(0);
+            cancelBtn.setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10));
+            cancelBtn.setMinWidth(0);
+            cancelBtn.setMinimumWidth(0);
+            cancelBtn.setMinHeight(dpToPx(36));
+            cancelBtn.setMinimumHeight(dpToPx(36));
+            GradientDrawable cancelBg = new GradientDrawable();
+            cancelBg.setShape(GradientDrawable.RECTANGLE);
+            cancelBg.setCornerRadius(dpToPx(3));
+            cancelBg.setColor(Color.TRANSPARENT);
+            cancelBtn.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(RIPPLE_GLOW), cancelBg, null));
+
+            Button okBtn = new Button(this);
+            okBtn.setText("OK");
+            okBtn.setTextColor(FLAME_EMBER);
+            okBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            okBtn.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            okBtn.setAllCaps(true);
+            okBtn.setStateListAnimator(null);
+            okBtn.setElevation(0);
+            okBtn.setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10));
+            okBtn.setMinWidth(0);
+            okBtn.setMinimumWidth(0);
+            okBtn.setMinHeight(dpToPx(36));
+            okBtn.setMinimumHeight(dpToPx(36));
+            GradientDrawable okBg = new GradientDrawable();
+            okBg.setShape(GradientDrawable.RECTANGLE);
+            okBg.setCornerRadius(dpToPx(3));
+            okBg.setColor(ACTION_BG);
+            okBg.setStroke(1, BORDER_DIM);
+            okBtn.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(RIPPLE_GLOW), okBg, null));
+
+            LinearLayout.LayoutParams cancelP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            cancelP.setMargins(0, 0, dpToPx(8), 0);
+            buttonRow.addView(cancelBtn, cancelP);
+            buttonRow.addView(okBtn);
+
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.addView(titleView);
+            int hPad = dpToPx(20);
+            LinearLayout.LayoutParams inputP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            inputP.setMargins(hPad, dpToPx(4), hPad, dpToPx(8));
+            layout.addView(input, inputP);
+            LinearLayout.LayoutParams btnRowP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            btnRowP.setMargins(hPad, 0, hPad, dpToPx(16));
+            layout.addView(buttonRow, btnRowP);
+
+            GradientDrawable dialogBg = new GradientDrawable();
+            dialogBg.setShape(GradientDrawable.RECTANGLE);
+            dialogBg.setCornerRadius(dpToPx(6));
+            dialogBg.setColor(INVENTORY_BG);
+            dialogBg.setStroke(1, BORDER_DIM);
+            layout.setBackground(dialogBg);
+
+            // Use the real full-screen dimensions (including nav bar area)
+            // so the dialog position doesn't shift when the keyboard or
+            // navigation bar appears/disappears.
+            android.graphics.Point realSize = new android.graphics.Point();
+            getWindowManager().getDefaultDisplay().getRealSize(realSize);
+            int fullScreenWidth = realSize.x;
+
+            AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
+                .setView(layout)
+                .setCancelable(true)
+                .setOnCancelListener(d -> {
+                    nativeTextInputResult(false, "");
+                })
+                .create();
+
+            cancelBtn.setOnClickListener(v -> {
+                nativeTextInputResult(false, "");
+                dialog.dismiss();
+            });
+            okBtn.setOnClickListener(v -> {
+                nativeTextInputResult(true, input.getText().toString());
+                dialog.dismiss();
+            });
+
+            dialog.setOnShowListener(d -> {
+                android.view.Window window = dialog.getWindow();
+                if (window != null) {
+                    // Match the activity's immersive flags so the nav bar
+                    // stays hidden and the dialog doesn't shift.
+                    window.getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+
+                    // Prevent the window from resizing/panning when the
+                    // soft keyboard appears.
+                    window.setSoftInputMode(
+                        android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+
+                    window.setBackgroundDrawable(dialogBg);
+                    window.setGravity(Gravity.CENTER);
+
+                    // Size based on real screen width (nav-bar-inclusive)
+                    // so layout is stable regardless of system UI state.
+                    int minWidth = fullScreenWidth / 3;
+                    window.setLayout(Math.max(minWidth, ViewGroup.LayoutParams.WRAP_CONTENT),
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+                }
+                // Auto-show keyboard
+                input.requestFocus();
+                input.postDelayed(() -> {
+                    android.view.inputmethod.InputMethodManager imm =
+                        (android.view.inputmethod.InputMethodManager)
+                            getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.showSoftInput(input, 0);
+                }, 200);
+            });
+
+            dialog.show();
+        });
+    }
+
+    // Native callback — signals the C thread with the dialog result.
+    private native void nativeTextInputResult(boolean confirmed, String text);
 
     private View makeInventoryRow(JSONObject item) {
         LinearLayout row = new LinearLayout(this);
@@ -800,6 +1204,7 @@ public class BrogueActivity extends SDLActivity {
             case 'a': return "Apply";
             case 'e': return "Equip";
             case 'r': return "Remove";
+            case 'c': return "Call";
             case 'd': return "Drop";
             case 't': return "Throw";
             default:  return String.valueOf(key);

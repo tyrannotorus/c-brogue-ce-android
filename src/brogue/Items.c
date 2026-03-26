@@ -1398,7 +1398,10 @@ void call(item *theItem) {
     if (tableForItemCategory(theItem->category)
         && !(tableForItemCategory(theItem->category)[theItem->kind].identified)) {
 
-        if (getInputTextString(itemText, "call them: \"", 29, "", "\"", TEXT_INPUT_NORMAL, false)) {
+        char callPrompt[COLS * 3];
+        itemName(theItem, buf, false, true, NULL);
+        sprintf(callPrompt, "call %s: \"", buf);
+        if (getInputTextString(itemText, callPrompt, 29, "", "\"", TEXT_INPUT_NORMAL, false)) {
             command[c++] = '\0';
             strcat((char *) command, itemText);
             recordKeystrokeSequence(command);
@@ -2886,6 +2889,9 @@ char displayInventory(unsigned short categoryMask,
                 actions[ai++] = (theItem->flags & ITEM_EQUIPPED) ? UNEQUIP_KEY : EQUIP_KEY;
                 actions[ai++] = ',';
             }
+            if (itemCanBeCalled(theItem)) {
+                actions[ai++] = CALL_KEY; actions[ai++] = ',';
+            }
             actions[ai++] = DROP_KEY;  actions[ai++] = ',';
             actions[ai++] = THROW_KEY; actions[ai++] = ',';
             if (ai > 0 && actions[ai-1] == ',') ai--;
@@ -2975,6 +2981,10 @@ char displayInventory(unsigned short categoryMask,
                     return 0;
                 case THROW_KEY:
                     throwCommand(theItem, false);
+                    restoreRNG;
+                    return 0;
+                case CALL_KEY:
+                    call(theItem);
                     restoreRNG;
                     return 0;
                 case ESCAPE_KEY:
