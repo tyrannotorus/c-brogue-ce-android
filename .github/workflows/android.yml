@@ -50,6 +50,18 @@ jobs:
           git push origin "refs/tags/${GITHUB_REF_NAME}" --force
           git push origin HEAD:master
 
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > $HOME/brogue-release.keystore
+
+      - name: Create keystore.properties
+        working-directory: android
+        run: |
+          echo "storeFile=$HOME/brogue-release.keystore" > keystore.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
+          echo "keyAlias=brogue" >> keystore.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease
