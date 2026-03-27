@@ -5,7 +5,7 @@ plugins {
 android {
     namespace = "org.broguece.game"
     compileSdk = 35
-    ndkVersion = "30.0.14904198"
+    ndkVersion = "28.0.13004108"
 
     defaultConfig {
         applicationId = "org.broguece.game"
