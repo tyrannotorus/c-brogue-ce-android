@@ -4,6 +4,16 @@ project(brogue C)
 # ---- SDL2 built from source (submodules) ----
 
 set(BROGUE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../..")
+
+# ---- Reproducible build flags ----
+# Strip absolute paths from binaries so builds from different directories match.
+get_filename_component(BROGUE_ROOT_ABS "${BROGUE_ROOT}" ABSOLUTE)
+add_compile_options(
+    "-ffile-prefix-map=${BROGUE_ROOT_ABS}=."
+    "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=./android/app/src/main/jni"
+)
+add_link_options("LINKER:--build-id=none,--hash-style=gnu")
+
 set(SDL2_SOURCE_DIR "${BROGUE_ROOT}/android/SDL2")
 set(SDL2_IMAGE_SOURCE_DIR "${BROGUE_ROOT}/android/SDL2_image")
 
