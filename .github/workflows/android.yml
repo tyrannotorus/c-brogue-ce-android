@@ -7,11 +7,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -23,6 +26,29 @@ jobs:
 
       - name: Install NDK
         run: sdkmanager "ndk;30.0.14904198" "cmake;3.22.1"
+
+      - name: Stamp version from tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          IFS='.' read -r MAJOR MINOR PATCH BUILD <<< "$TAG"
+          BUILD="${BUILD:-0}"
+          VERSION_CODE=$(( MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD ))
+          VERSION_NAME="$TAG"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+          sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" android/app/build.gradle.kts
+          sed -i "s/versionName = .*/versionName = \"$VERSION_NAME\"/" android/app/build.gradle.kts
+
+      - name: Commit version bump and update tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add android/app/build.gradle.kts
+          git commit -m "Bump version to ${{ env.VERSION_NAME }} (${{ env.VERSION_CODE }})"
+          git tag -f "${GITHUB_REF_NAME}" HEAD
+          git push origin HEAD:refs/heads/${GITHUB_REF_NAME}-release --force
+          git push origin "refs/tags/${GITHUB_REF_NAME}" --force
 
       - name: Build release APK
         working-directory: android
