@@ -1,0 +1,3 @@
+Brogue CE is the community-maintained edition of Brogue, a single-player dungeon crawling roguelike. Descend into the Dungeons of Doom, retrieve the Amulet of Yendor, and return to the surface. Every run is procedurally generated with rich tactical gameplay, beautiful ASCII-art lighting, and an elegant interface.
+
+This is the Android port with native touch controls and a mobile-first inventory and menu system.

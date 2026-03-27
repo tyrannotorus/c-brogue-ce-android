@@ -1,0 +1,5 @@
+- Added Call/Inscribe item renaming with native Android text input dialog
+- Added Save and Exit, Abandon Game, and Exit to menu
+- Auto-loads saved game from title screen
+- Reorganized menu into Inventory, Actions, Settings, and Exit panels
+- Fixed UI overlay rendering to correct display layer

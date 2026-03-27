@@ -47,8 +47,8 @@ jobs:
           git add android/app/build.gradle.kts
           git commit -m "Bump version to ${{ env.VERSION_NAME }} (${{ env.VERSION_CODE }})"
           git tag -f "${GITHUB_REF_NAME}" HEAD
-          git push origin HEAD:refs/heads/${GITHUB_REF_NAME}-release --force
           git push origin "refs/tags/${GITHUB_REF_NAME}" --force
+          git push origin HEAD:master
 
       - name: Build release APK
         working-directory: android
