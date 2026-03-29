@@ -1,0 +1,3 @@
+- Added title.txt for F-Droid metadata
+- Added icon.png to fastlane images
+- Added missing changelogs for versions 1150105-1150109

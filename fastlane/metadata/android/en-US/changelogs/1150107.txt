@@ -1,0 +1,1 @@
+- Resolve differences between F-Droid builds
