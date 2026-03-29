@@ -525,6 +525,14 @@ void initRecording() {
             rogue.playbackOOS = false;
             rogue.gameHasEnded = true;
             rogue.gameExitStatusCode = EXIT_STATUS_FAILURE_RECORDING_WRONG_VERSION;
+
+            // Remove the incompatible Android save so the title screen
+            // doesn't auto-load it again in an infinite loop.
+            {
+                char savePath[BROGUE_FILENAME_MAX];
+                snprintf(savePath, sizeof(savePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+                remove(savePath);
+            }
         }
 
         rogue.seed              = recallNumber(8);          // master random seed
@@ -996,6 +1004,12 @@ boolean executePlaybackInput(rogueEvent *recordingInput) {
                 rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
                 rogue.playbackOOS = false;
                 rogue.creaturesWillFlashThisTurn = false;
+                // Remove the Android save so the player isn't stuck in a load loop.
+                {
+                    char savePath[BROGUE_FILENAME_MAX];
+                    snprintf(savePath, sizeof(savePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+                    remove(savePath);
+                }
                 notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");
                 return true;
             case TRUE_COLORS_KEY:

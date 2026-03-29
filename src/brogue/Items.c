@@ -2961,37 +2961,34 @@ char displayInventory(unsigned short categoryMask,
         } else {
             // Second keypress: action key.
             androidHideInventory();
+            // Restore substantive RNG before any game actions so that
+            // recording and playback advance the same RNG stream.
+            restoreRNG;
 
             switch (key) {
                 case APPLY_KEY:
                     apply(theItem);
-                    restoreRNG;
                     return 0;
                 case EQUIP_KEY:
                     equip(theItem);
-                    restoreRNG;
                     return 0;
                 case UNEQUIP_KEY:
                     unequip(theItem);
-                    restoreRNG;
                     return 0;
                 case DROP_KEY:
                     drop(theItem);
-                    restoreRNG;
                     return 0;
                 case THROW_KEY:
                     throwCommand(theItem, false);
-                    restoreRNG;
                     return 0;
                 case CALL_KEY:
                     call(theItem);
-                    restoreRNG;
                     return 0;
                 case ESCAPE_KEY:
-                    restoreRNG;
                     return 0;
                 default:
                     // Unknown action, treat as cancel on this item, go back to list.
+                    rogue.RNG = RNG_COSMETIC; // re-enter cosmetic for display loop
                     waitingForAction = false;
                     theItem = NULL;
                     androidShowInventory(json); // re-show
