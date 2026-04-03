@@ -1300,7 +1300,24 @@ static boolean inscribeItem(item *theItem) {
     strcpy(theItem->inscription, oldInscription);
 
     sprintf(buf, "inscribe: %s \"", nameOfItem);
-    if (getInputTextString(itemText, buf, min(29, DCOLS - strLenWithoutEscapes(buf) - 1), "", "\"", TEXT_INPUT_NORMAL, false)) {
+    boolean confirmed;
+    if (rogue.playbackMode) {
+        // During playback, read the text from recorded keystrokes
+        // instead of showing the Android text input dialog.
+        short i = 0;
+        char key;
+        do {
+            key = nextKeyPress(true);
+            if (key >= ' ' && key <= '~' && i < 29) {
+                itemText[i++] = key;
+            }
+        } while (key != RETURN_KEY && key != ESCAPE_KEY);
+        itemText[i] = '\0';
+        confirmed = (key != ESCAPE_KEY);
+    } else {
+        confirmed = getInputTextString(itemText, buf, min(29, DCOLS - strLenWithoutEscapes(buf) - 1), "", "\"", TEXT_INPUT_NORMAL, false);
+    }
+    if (confirmed) {
         strcpy(theItem->inscription, itemText);
         confirmMessages();
         itemName(theItem, nameOfItem, true, true, NULL);
@@ -1398,10 +1415,27 @@ void call(item *theItem) {
     if (tableForItemCategory(theItem->category)
         && !(tableForItemCategory(theItem->category)[theItem->kind].identified)) {
 
-        char callPrompt[COLS * 3];
-        itemName(theItem, buf, false, true, NULL);
-        sprintf(callPrompt, "call %s: \"", buf);
-        if (getInputTextString(itemText, callPrompt, 29, "", "\"", TEXT_INPUT_NORMAL, false)) {
+        boolean confirmed;
+        if (rogue.playbackMode) {
+            // During playback, read the text from recorded keystrokes
+            // instead of showing the Android text input dialog.
+            short i = 0;
+            char key;
+            do {
+                key = nextKeyPress(true);
+                if (key >= ' ' && key <= '~' && i < 29) {
+                    itemText[i++] = key;
+                }
+            } while (key != RETURN_KEY && key != ESCAPE_KEY);
+            itemText[i] = '\0';
+            confirmed = (key != ESCAPE_KEY);
+        } else {
+            char callPrompt[COLS * 3];
+            itemName(theItem, buf, false, true, NULL);
+            sprintf(callPrompt, "call %s: \"", buf);
+            confirmed = getInputTextString(itemText, callPrompt, 29, "", "\"", TEXT_INPUT_NORMAL, false);
+        }
+        if (confirmed) {
             command[c++] = '\0';
             strcat((char *) command, itemText);
             recordKeystrokeSequence(command);
@@ -2927,7 +2961,9 @@ char displayInventory(unsigned short categoryMask,
     pos += snprintf(json + pos, sizeof(json) - pos, "]}");
 
     // Show native inventory and wait for user input.
-    androidShowInventory(json);
+    if (!rogue.playbackMode) {
+        androidShowInventory(json);
+    }
 
     // Event loop: wait for item letter then action key, or ESCAPE to cancel.
     theKey = ESCAPE_KEY;
@@ -2960,7 +2996,9 @@ char displayInventory(unsigned short categoryMask,
             }
         } else {
             // Second keypress: action key.
-            androidHideInventory();
+            if (!rogue.playbackMode) {
+                androidHideInventory();
+            }
             // Restore substantive RNG before any game actions so that
             // recording and playback advance the same RNG stream.
             restoreRNG;
@@ -2991,13 +3029,17 @@ char displayInventory(unsigned short categoryMask,
                     rogue.RNG = RNG_COSMETIC; // re-enter cosmetic for display loop
                     waitingForAction = false;
                     theItem = NULL;
-                    androidShowInventory(json); // re-show
+                    if (!rogue.playbackMode) {
+                        androidShowInventory(json); // re-show
+                    }
                     break;
             }
         }
     }
 
-    androidHideInventory();
+    if (!rogue.playbackMode) {
+        androidHideInventory();
+    }
     restoreRNG;
     return theKey;
 }

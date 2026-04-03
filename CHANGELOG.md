@@ -1,3 +1,21 @@
+1.15.1.11 (Android)
+===================
+
+- Fixed naming items (Call) causing out-of-sync errors during game loading and replays.
+- Fixed inventory panel briefly flashing during game loading.
+- Fixed Call dialog animation and keyboard behavior.
+- Fixed phantom menu appearing after loading a saved game.
+- Fixed actions panel freezing the game when selecting an action.
+- Added loading screen when loading a saved game.
+- Camera snaps to the player immediately on game load instead of sliding.
+- Game overlay no longer appears before the game is ready.
+- Inventory list auto-scrolls to show action buttons when expanding an item.
+- Toolbar now uses Material Design icons (Google, Apache 2.0 license).
+- Toolbar is customizable: pin or unpin actions via the Actions panel.
+- All game actions (Inventory, Mouse, Click, Search, Explore, Rest, Autopilot) available in the Actions panel with toolbar toggles.
+- Settings (Hide Color Effects, Stealth Range, Graphics) now persist across app restarts.
+
+
 1.15.1
 ======
 

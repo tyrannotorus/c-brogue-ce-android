@@ -73,6 +73,48 @@ void androidSetOverlayVisible(boolean visible) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+void androidSetLoadingVisible(boolean visible) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "setLoadingVisible", "(Z)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jboolean)visible);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+static boolean androidGetSettingBool(const char *key) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "getSettingBool",
+                                        "(Ljava/lang/String;)Z");
+    boolean result = false;
+    if (mid) {
+        jstring jkey = (*env)->NewStringUTF(env, key);
+        result = (*env)->CallBooleanMethod(env, activity, mid, jkey);
+        (*env)->DeleteLocalRef(env, jkey);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    return result;
+}
+
+void androidApplySettings(void) {
+    extern enum graphicsModes graphicsMode;
+    extern enum graphicsModes setGraphicsMode(enum graphicsModes mode);
+
+    rogue.trueColorMode = androidGetSettingBool("hide_color_effects");
+    rogue.displayStealthRangeMode = androidGetSettingBool("display_stealth_range");
+
+    boolean wantGraphics = androidGetSettingBool("enable_graphics");
+    if (wantGraphics && graphicsMode == TEXT_GRAPHICS) {
+        graphicsMode = setGraphicsMode(TILES_GRAPHICS);
+    } else if (!wantGraphics && graphicsMode != TEXT_GRAPHICS) {
+        graphicsMode = setGraphicsMode(TEXT_GRAPHICS);
+    }
+}
+
 void androidShowInventory(const char *json) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
@@ -164,6 +206,7 @@ Java_org_broguece_game_BrogueActivity_nativeTextInputResult(
 
 float androidZoomLevel = 2.0f;
 float androidPanX = 0.0f, androidPanY = 0.0f;
+boolean androidCameraSnap = false;
 boolean androidPanOverride = false;
 
 /* ---- Helpers ---- */

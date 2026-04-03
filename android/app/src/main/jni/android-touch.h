@@ -42,4 +42,8 @@ extern float androidPanX, androidPanY;
 /* True while user is two-finger dragging — suppresses auto-center. */
 extern boolean androidPanOverride;
 
+/* When true, snap the camera to the player immediately instead of tweening.
+ * Set on game load; consumed after the first frame. */
+extern boolean androidCameraSnap;
+
 #endif

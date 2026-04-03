@@ -101,13 +101,16 @@ extern boolean softwareRendering;
 int fontIndex(enum displayGlyph glyph);
 
 void androidResetTouchState(void);
+extern boolean androidCameraSnap;
 #define TITLE_COLS 140
 void updateTitleScreenTile(int row, int column, enum displayGlyph glyph,
     short foreRed, short foreGreen, short foreBlue,
     short backRed, short backGreen, short backBlue);
 void androidSetOverlayVisible(boolean visible);
+void androidSetLoadingVisible(boolean visible);
+void androidApplySettings(void);
 
-enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL };
+enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL, RENDER_LOADING };
 void setRenderMode(enum RenderMode mode);
 enum RenderMode getRenderMode(void);
 void enterModalMode(void);
