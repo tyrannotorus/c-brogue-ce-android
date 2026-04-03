@@ -69,6 +69,7 @@ public class BrogueActivity extends SDLActivity {
         {"click",      "Mouse Click"},
         {"search",     "Search"},
         {"explore",    "Explore"},
+        {"wait",       "Rest One Turn"},
         {"rest",       "Rest Until Better"},
         {"autopilot",  "Autopilot"},
     };
@@ -82,6 +83,7 @@ public class BrogueActivity extends SDLActivity {
             case "click":     return R.drawable.ic_left_click;
             case "search":    return R.drawable.ic_search;
             case "explore":   return R.drawable.ic_explore;
+            case "wait":      return R.drawable.ic_hourglass;
             case "rest":      return R.drawable.ic_heart_check;
             case "autopilot": return R.drawable.ic_autoplay;
             default:          return R.drawable.ic_menu;
@@ -127,6 +129,7 @@ public class BrogueActivity extends SDLActivity {
             case "click":     sendKey(KeyEvent.KEYCODE_ENTER); break;
             case "search":    sendChar('s'); break;
             case "explore":   sendChar('x'); break;
+            case "wait":      sendChar('z'); break;
             case "rest":      sendChar('Z'); break;
             case "autopilot": sendChar('A'); break;
         }
@@ -370,7 +373,7 @@ public class BrogueActivity extends SDLActivity {
         // Toggles section
         addSettingsToggle(panel, "Hide Color Effects", "hide_color_effects", '\\');
         addSettingsToggle(panel, "Display Stealth Range", "display_stealth_range", ']');
-        addSettingsToggle(panel, "Enable Graphics", "enable_graphics", 'G');
+        addGraphicsModeCycler(panel);
 
         // Separator
         addSettingsSeparator(panel);
@@ -741,12 +744,29 @@ public class BrogueActivity extends SDLActivity {
             .edit().putBoolean(key, value).apply();
     }
 
+    private int getGameSettingInt(String key, int defaultValue) {
+        return getSharedPreferences("brogue_settings", MODE_PRIVATE)
+            .getInt(key, defaultValue);
+    }
+
+    private void setGameSettingInt(String key, int value) {
+        getSharedPreferences("brogue_settings", MODE_PRIVATE)
+            .edit().putInt(key, value).apply();
+    }
+
     // Called from C via JNI to read a saved setting.
     public boolean getSettingBool(String key) {
         return getGameSetting(key);
     }
 
-    private void addSettingsToggle(LinearLayout panel, String label, String prefKey, char gameKey) {
+    // Called from C via JNI to read a saved int setting.
+    public int getSettingInt(String key, int defaultValue) {
+        return getGameSettingInt(key, defaultValue);
+    }
+
+    private static final String[] GRAPHICS_MODE_LABELS = {"Graphics: ASCII", "Graphics: Tiles", "Graphics: Hybrid"};
+
+    private LinearLayout addSettingsRow(LinearLayout panel, String label) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -778,6 +798,34 @@ public class BrogueActivity extends SDLActivity {
         row.addView(labelView, new LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        p.setMargins(0, dpToPx(2), 0, dpToPx(2));
+        panel.addView(row, p);
+
+        return row;
+    }
+
+    private void addGraphicsModeCycler(LinearLayout panel) {
+        int mode = getGameSettingInt("graphics_mode", 0);
+        if (mode < 0 || mode > 2) mode = 0;
+
+        LinearLayout row = addSettingsRow(panel, GRAPHICS_MODE_LABELS[mode]);
+        TextView labelView = (TextView) row.getChildAt(0);
+
+        final int[] currentMode = {mode};
+        row.setOnClickListener(v -> {
+            currentMode[0] = (currentMode[0] + 1) % 3;
+            setGameSettingInt("graphics_mode", currentMode[0]);
+            labelView.setText(GRAPHICS_MODE_LABELS[currentMode[0]]);
+            sendChar('G');
+        });
+    }
+
+    private void addSettingsToggle(LinearLayout panel, String label, String prefKey, char gameKey) {
+        LinearLayout row = addSettingsRow(panel, label);
+
         boolean on = getGameSetting(prefKey);
         TextView check = new TextView(this);
         check.setText(on ? "\u2713" : "");
@@ -803,15 +851,8 @@ public class BrogueActivity extends SDLActivity {
             GradientDrawable cbg = (GradientDrawable) check.getBackground();
             cbg.setColor(nowOn ? ACTION_BG : Color.TRANSPARENT);
             cbg.setStroke(1, BORDER_ACTIVE);
-            // Send the key to toggle the in-game state immediately
             sendChar(gameKey);
         });
-
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, dpToPx(2), 0, dpToPx(2));
-        panel.addView(row, p);
     }
 
     private void addSettingsAction(LinearLayout panel, String label, View.OnClickListener listener) {

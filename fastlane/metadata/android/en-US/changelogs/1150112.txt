@@ -1,0 +1,2 @@
+- Graphics mode setting now shows all three modes: ASCII, Tiles, and Hybrid
+- Added Rest One Turn action

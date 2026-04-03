@@ -100,6 +100,23 @@ static boolean androidGetSettingBool(const char *key) {
     return result;
 }
 
+static int androidGetSettingInt(const char *key, int defaultValue) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "getSettingInt",
+                                        "(Ljava/lang/String;I)I");
+    int result = defaultValue;
+    if (mid) {
+        jstring jkey = (*env)->NewStringUTF(env, key);
+        result = (*env)->CallIntMethod(env, activity, mid, jkey, (jint)defaultValue);
+        (*env)->DeleteLocalRef(env, jkey);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    return result;
+}
+
 void androidApplySettings(void) {
     extern enum graphicsModes graphicsMode;
     extern enum graphicsModes setGraphicsMode(enum graphicsModes mode);
@@ -107,11 +124,10 @@ void androidApplySettings(void) {
     rogue.trueColorMode = androidGetSettingBool("hide_color_effects");
     rogue.displayStealthRangeMode = androidGetSettingBool("display_stealth_range");
 
-    boolean wantGraphics = androidGetSettingBool("enable_graphics");
-    if (wantGraphics && graphicsMode == TEXT_GRAPHICS) {
-        graphicsMode = setGraphicsMode(TILES_GRAPHICS);
-    } else if (!wantGraphics && graphicsMode != TEXT_GRAPHICS) {
-        graphicsMode = setGraphicsMode(TEXT_GRAPHICS);
+    int mode = androidGetSettingInt("graphics_mode", TEXT_GRAPHICS);
+    if (mode < TEXT_GRAPHICS || mode > HYBRID_GRAPHICS) mode = TEXT_GRAPHICS;
+    if (mode != (int)graphicsMode) {
+        graphicsMode = setGraphicsMode(mode);
     }
 }
 
