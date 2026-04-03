@@ -779,6 +779,15 @@ void updateScreen() {
         fitH = outputWidth * 10 / 16;
     }
 
+    // During loading, just present a black frame — the Android overlay
+    // shows "LOADING" text, so skip all tile rendering.
+    if (renderMode == RENDER_LOADING) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
     float effectiveZoom = (renderMode != RENDER_TITLE) ? androidZoomLevel : 1.0f;
     boolean inGame = (renderMode != RENDER_TITLE);
 
@@ -806,8 +815,14 @@ void updateScreen() {
         }
         float targetPanX = screenW / 2.0f - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
         float targetPanY = screenH / 2.0f - (centerY + 0.5f) * zoomH / ROWS - (screenH - zoomH) / 2.0f;
-        androidPanX += (targetPanX - androidPanX) * 0.15f;
-        androidPanY += (targetPanY - androidPanY) * 0.15f;
+        if (androidCameraSnap) {
+            androidPanX = targetPanX;
+            androidPanY = targetPanY;
+            androidCameraSnap = false;
+        } else {
+            androidPanX += (targetPanX - androidPanX) * 0.15f;
+            androidPanY += (targetPanY - androidPanY) * 0.15f;
+        }
     }
 
     int cx = (screenW - zoomW) / 2 + (int)androidPanX;

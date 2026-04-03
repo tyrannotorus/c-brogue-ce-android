@@ -26,6 +26,7 @@
 #include "Rogue.h"
 #include "GlobalsBase.h"
 #include "Globals.h"
+#include "platform.h"
 
 #define RECORDING_HEADER_LENGTH     36  // bytes at the start of the recording file to store global data
 
@@ -1344,10 +1345,13 @@ void switchToPlaying() {
 
     strcpy(currentFilePath, lastGamePath);
 
+    androidSetLoadingVisible(false);
+    setRenderMode(RENDER_GAMEPLAY);
     blackOutScreen();
     refreshSideBar(-1, -1, false);
     updateMessageDisplay();
     displayLevel();
+    androidSetOverlayVisible(true);
 }
 
 // Return whether the load was cancelled by an event
@@ -1361,6 +1365,8 @@ boolean loadSavedGame() {
     randomNumbersGenerated = 0;
     rogue.playbackMode = true;
     rogue.playbackFastForward = true;
+    setRenderMode(RENDER_LOADING);
+    androidSetLoadingVisible(true);
     initializeRogue(0); // Calls initRecording(). Seed argument is ignored because we're initially in playback mode.
     if (!rogue.gameHasEnded) {
         blackOutScreen();
@@ -1395,6 +1401,8 @@ boolean loadSavedGame() {
                     rogue.creaturesWillFlashThisTurn = false; // prevent monster flashes from showing up on screen
                     nextBrogueEvent(&theEvent, true, false, true);
                     if (rogue.gameHasEnded || theEvent.eventType == KEYSTROKE && theEvent.param1 == ESCAPE_KEY) {
+                        androidSetLoadingVisible(false);
+                        setRenderMode(RENDER_GAMEPLAY);
                         return false;
                     }
                 }
@@ -1407,6 +1415,9 @@ boolean loadSavedGame() {
     if (!rogue.gameHasEnded && !rogue.playbackOOS) {
         switchToPlaying();
         recordChar(SAVED_GAME_LOADED);
+    } else {
+        androidSetLoadingVisible(false);
+        setRenderMode(RENDER_GAMEPLAY);
     }
     return true;
 }

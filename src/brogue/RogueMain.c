@@ -220,11 +220,12 @@ void initializeRogue(uint64_t seed) {
     rogue.hideSeed = hideSeed;
     rogue.displayStealthRangeMode = displayStealthRangeMode;
     rogue.trueColorMode = trueColorMode;
+    androidApplySettings();
 
     rogue.gameHasEnded = false;
     rogue.gameInProgress = true;
     androidResetTouchState();
-    androidSetOverlayVisible(true);
+    androidCameraSnap = true;
     setRenderMode(RENDER_GAMEPLAY);
     rogue.highScoreSaved = false;
     rogue.cautiousMode = false;
@@ -921,6 +922,9 @@ void startLevel(short oldLevelNumber, short stairDirection) {
     rogue.playbackBetweenTurns = true;
     displayLevel();
     refreshSideBar(-1, -1, false);
+    if (!rogue.playbackMode) {
+        androidSetOverlayVisible(true);
+    }
 
     if (rogue.playerTurnNumber) {
         rogue.playerTurnNumber++; // Increment even though no time has passed.
