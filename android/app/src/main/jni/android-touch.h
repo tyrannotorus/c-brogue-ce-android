@@ -26,12 +26,16 @@ void androidResetTouchState(void);
 void androidShowInventory(const char *json);
 void androidHideInventory(void);
 
+/* Show the start menu overlay (New Game / Resume / Play Seed).
+ * Non-blocking — the Java callback sets rogue.nextGame when the user picks. */
+void androidShowStartMenu(boolean hasSave, boolean saveCompatible);
+
 /* Show a native Android text input dialog.
  * Blocks until the user confirms or cancels.
  * On confirm, copies input into `outBuf` (up to maxLen-1 chars) and returns true.
  * On cancel, returns false (outBuf is set to empty string). */
 boolean androidGetTextInput(const char *prompt, const char *defaultText,
-                            int maxLen, char *outBuf);
+                            int maxLen, boolean numericOnly, char *outBuf);
 
 /* Zoom level for pinch-to-zoom. 1.0 = full grid, >1.0 = zoomed in. */
 extern float androidZoomLevel;

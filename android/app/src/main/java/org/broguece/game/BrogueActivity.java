@@ -53,10 +53,20 @@ public class BrogueActivity extends SDLActivity {
     private static final int ITEM_BG       = Color.argb(200, 20, 17, 42);
     private static final int EQUIPPED_GLOW = Color.argb(220, 45, 35, 55);
     private static final int ACTION_BG     = Color.argb(220, 30, 25, 55);
+    private static final int GOOD_MAGIC    = Color.argb(255, 153, 128, 255); // Brogue {60,50,100}
+    private static final int BAD_MAGIC     = Color.argb(255, 255, 128, 153); // Brogue {100,50,60}
 
     // Right-edge safe margin — accommodates devices (e.g. Poco M3 / MIUI)
     // where the navigation bar area is reserved even in immersive mode.
     private static final int EDGE_SAFE_DP  = 48;
+
+    // Start menu choice constants — must match android-touch.c
+    private static final int START_MENU_NEW_GAME  = 0;
+    private static final int START_MENU_RESUME    = 1;
+    private static final int START_MENU_PLAY_SEED = 2;
+
+    private static final int DISABLED_BG   = Color.argb(100, 15, 13, 30);
+    private static final int DISABLED_TEXT  = Color.argb(100, 100, 95, 110);
 
     private FrameLayout gameOverlay;
     private FrameLayout inventoryOverlay;
@@ -200,7 +210,7 @@ public class BrogueActivity extends SDLActivity {
 
     private void resetMouseToggle() {
         View mouseView = findToolbarButton("mouse");
-        if (mouseView != null) {
+        if (mouseView != null && mouseView.getTag() instanceof Boolean && (boolean) mouseView.getTag()) {
             mouseView.setTag(false);
             animateToggle(mouseView, false);
         }
@@ -386,9 +396,15 @@ public class BrogueActivity extends SDLActivity {
         addSettingsSeparator(panel);
 
         // Info section
-        addSettingsAction(panel, "View Dungeon Seed", v -> {
+        addSettingsAction(panel, "Copy Seed to Clipboard", v -> {
+            long seed = nativeGetSeed();
+            android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("Brogue Seed", String.valueOf(seed)));
+            android.widget.Toast.makeText(this,
+                "Seed " + seed + " copied", android.widget.Toast.LENGTH_SHORT).show();
             hideSettingsPanel();
-            sendChar('~');
         });
 
         int panelWidth = Math.min(dpToPx(280),
@@ -656,6 +672,157 @@ public class BrogueActivity extends SDLActivity {
             .start();
     }
 
+    // ---- Start menu (shown over title flames) ----
+
+    private View startMenuOverlay;
+
+    public void showStartMenu(final boolean hasSave, final boolean saveCompatible) {
+        runOnUiThread(() -> {
+            if (startMenuOverlay != null && startMenuOverlay.getParent() != null) {
+                ((ViewGroup) startMenuOverlay.getParent()).removeView(startMenuOverlay);
+            }
+
+            FrameLayout root = new FrameLayout(this);
+            startMenuOverlay = root;
+
+            // Semi-transparent backdrop — no dismiss on tap (menu is mandatory)
+            View backdrop = new View(this);
+            backdrop.setBackgroundColor(Color.argb(120, 0, 0, 0));
+            root.addView(backdrop, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
+            // Panel
+            LinearLayout panel = new LinearLayout(this);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            int pad = dpToPx(16);
+            panel.setPadding(pad, pad, pad, pad);
+
+            GradientDrawable panelBg = new GradientDrawable();
+            panelBg.setShape(GradientDrawable.RECTANGLE);
+            panelBg.setCornerRadius(dpToPx(6));
+            panelBg.setColor(INVENTORY_BG);
+            panelBg.setStroke(1, BORDER_DIM);
+            panel.setBackground(panelBg);
+            panel.setElevation(dpToPx(12));
+
+            // Header
+            TextView header = new TextView(this);
+            header.setText("BROGUE CE");
+            header.setTextColor(FLAME_EMBER);
+            header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            header.setLetterSpacing(0.2f);
+            header.setGravity(Gravity.CENTER);
+            header.setPadding(0, dpToPx(4), 0, dpToPx(8));
+            panel.addView(header);
+
+            // Separator
+            View sep = new View(this);
+            GradientDrawable sepGrad = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+            sep.setBackground(sepGrad);
+            LinearLayout.LayoutParams sepP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1);
+            sepP.setMargins(dpToPx(8), 0, dpToPx(8), dpToPx(12));
+            panel.addView(sep, sepP);
+
+            // New Game button
+            addStartMenuButton(panel, "New Game", true, v -> {
+                dismissStartMenu();
+                nativeStartMenuResult(START_MENU_NEW_GAME);
+            });
+
+            // Resume Game button (enabled only if compatible save exists)
+            addStartMenuButton(panel, hasSave && !saveCompatible
+                    ? "Resume Game  (incompatible save)"
+                    : "Resume Game",
+                hasSave && saveCompatible,
+                v -> {
+                    dismissStartMenu();
+                    nativeStartMenuResult(START_MENU_RESUME);
+                });
+
+            // Play Seed button
+            addStartMenuButton(panel, "Play Seed", true, v -> {
+                dismissStartMenu();
+                nativeStartMenuResult(START_MENU_PLAY_SEED);
+            });
+
+            int panelWidth = Math.min(dpToPx(300),
+                (int)(getResources().getDisplayMetrics().widthPixels * 0.7f));
+
+            FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(
+                panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER);
+            root.addView(panel, panelParams);
+
+            addContentView(root, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
+            // Fade-in animation
+            panel.setAlpha(0f);
+            panel.setScaleX(0.92f);
+            panel.setScaleY(0.92f);
+            panel.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(250)
+                .setInterpolator(new DecelerateInterpolator(1.5f))
+                .start();
+        });
+    }
+
+    private void dismissStartMenu() {
+        if (startMenuOverlay != null && startMenuOverlay.getParent() != null) {
+            ((ViewGroup) startMenuOverlay.getParent()).removeView(startMenuOverlay);
+        }
+        startMenuOverlay = null;
+    }
+
+    private void addStartMenuButton(LinearLayout panel, String label,
+                                     boolean enabled, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        row.setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12));
+        row.setMinimumHeight(dpToPx(48));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dpToPx(4));
+        bg.setColor(enabled ? ITEM_BG : DISABLED_BG);
+        if (enabled) {
+            row.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(RIPPLE_GLOW), bg, null));
+        } else {
+            row.setBackground(bg);
+        }
+
+        TextView labelView = new TextView(this);
+        labelView.setText(label);
+        labelView.setTextColor(enabled ? GHOST_WHITE : DISABLED_TEXT);
+        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        labelView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        labelView.setGravity(Gravity.CENTER);
+        row.addView(labelView, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        row.setEnabled(enabled);
+        row.setClickable(enabled);
+        if (enabled) row.setOnClickListener(listener);
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        p.setMargins(0, dpToPx(3), 0, dpToPx(3));
+        panel.addView(row, p);
+    }
+
+    private native void nativeStartMenuResult(int choice);
+
     private void addActionRow(LinearLayout panel, String key, String label) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -916,12 +1083,18 @@ public class BrogueActivity extends SDLActivity {
 
     public void showInventory(final String json) {
         runOnUiThread(() -> {
+            // Cancel any in-flight hide animation so its withEndAction
+            // doesn't wipe our new content (e.g. nested ring-swap prompt).
+            for (int i = 0; i < inventoryOverlay.getChildCount(); i++) {
+                inventoryOverlay.getChildAt(i).animate().cancel();
+            }
             inventoryOverlay.removeAllViews();
             currentlyExpandedDetail = null;
 
             try {
                 JSONObject root = new JSONObject(json);
                 String mode = root.optString("mode", "inventory");
+                String prompt = root.optString("prompt", "");
                 boolean selectMode = "select".equals(mode);
                 JSONArray items = root.getJSONArray("items");
 
@@ -962,7 +1135,8 @@ public class BrogueActivity extends SDLActivity {
 
                 // Header
                 TextView header = new TextView(this);
-                header.setText(selectMode ? "SELECT ITEM" : "INVENTORY");
+                header.setText(selectMode && !prompt.isEmpty() ? prompt
+                    : selectMode ? "SELECT ITEM" : "INVENTORY");
                 header.setTextColor(selectMode ? PALE_BLUE : FLAME_EMBER);
                 header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
                 header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -1005,9 +1179,7 @@ public class BrogueActivity extends SDLActivity {
                         panel.addView(sep, sepP);
                     }
 
-                    panel.addView(selectMode
-                        ? makeSelectRow(item)
-                        : makeInventoryRow(item, scrollView));
+                    panel.addView(makeInventoryRow(item, scrollView, selectMode));
                 }
 
                 scrollView.addView(panel);
@@ -1068,13 +1240,14 @@ public class BrogueActivity extends SDLActivity {
     // ---- Native text input dialog ----
 
     // Called from native code (JNI) to show a text input dialog.
-    public void showTextInputDialog(final String prompt, final String defaultText, final int maxLen) {
+    public void showTextInputDialog(final String prompt, final String defaultText,
+                                     final int maxLen, final boolean numericOnly) {
         runOnUiThread(() -> {
             EditText input = new EditText(this);
             input.setTextColor(GHOST_WHITE);
             input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
             input.setTypeface(Typeface.MONOSPACE);
-            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            input.setInputType(numericOnly ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_TEXT);
             input.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(maxLen) });
             input.setText(defaultText);
             input.setSelectAllOnFocus(true);
@@ -1234,36 +1407,38 @@ public class BrogueActivity extends SDLActivity {
 
     // Native callback — signals the C thread with the dialog result.
     private native void nativeTextInputResult(boolean confirmed, String text);
+    private native long nativeGetSeed();
 
-    private View makeInventoryRow(JSONObject item, ScrollView scrollView) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-
+    private View makeInventoryRow(JSONObject item, ScrollView scrollView, boolean selectMode) {
         boolean equipped = item.optBoolean("equipped", false);
         boolean selectable = item.optBoolean("selectable", true);
         char letter = item.optString("letter", "?").charAt(0);
         String name = item.optString("name", "???");
         String desc = item.optString("desc", "");
         String actions = item.optString("actions", "");
+        int magicPolarity = item.optInt("magicPolarity", 0);
+        String displayName = name + (equipped ? " (equipped)" : "");
 
-        // Item header row (letter + name + chevron)
+        // Header row: magic indicator + name (+ chevron in inventory mode)
         LinearLayout headerRow = new LinearLayout(this);
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
         headerRow.setGravity(Gravity.CENTER_VERTICAL);
         headerRow.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
         headerRow.setMinimumHeight(dpToPx(44));
+        headerRow.setContentDescription(displayName);
 
         GradientDrawable rowBg = new GradientDrawable();
         rowBg.setShape(GradientDrawable.RECTANGLE);
         rowBg.setCornerRadius(dpToPx(3));
-        rowBg.setColor(equipped ? EQUIPPED_GLOW : ITEM_BG);
-        if (equipped) {
-            rowBg.setStroke(dpToPx(1), FLAME_DIM);
+        if (selectMode) {
+            rowBg.setColor(selectable ? ITEM_BG : DISABLED_BG);
+        } else {
+            rowBg.setColor(equipped ? EQUIPPED_GLOW : ITEM_BG);
+            if (equipped) rowBg.setStroke(dpToPx(1), FLAME_DIM);
         }
         headerRow.setBackground(new RippleDrawable(
             ColorStateList.valueOf(RIPPLE_GLOW), rowBg, null));
 
-        // Touch animation on header row
         headerRow.setOnTouchListener((v, e) -> {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(60).start();
@@ -1274,31 +1449,41 @@ public class BrogueActivity extends SDLActivity {
             return false;
         });
 
-        // Letter badge
-        TextView letterView = new TextView(this);
-        letterView.setText(String.valueOf(letter));
-        letterView.setTextColor(FLAME_EMBER);
-        letterView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        letterView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        letterView.setGravity(Gravity.CENTER);
-        letterView.setMinWidth(dpToPx(24));
-        headerRow.addView(letterView);
+        addMagicIndicator(headerRow, magicPolarity);
 
-        // Item name
         TextView nameView = new TextView(this);
-        String displayName = name + (equipped ? " (equipped)" : "");
         nameView.setText(displayName);
-        nameView.setTextColor(selectable ? GHOST_WHITE : Color.argb(150, 120, 115, 130));
+        nameView.setTextColor(selectable ? GHOST_WHITE
+            : (selectMode ? DISABLED_TEXT : Color.argb(150, 120, 115, 130)));
         nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         nameView.setTypeface(Typeface.MONOSPACE);
         nameView.setPadding(dpToPx(6), 0, 0, 0);
         nameView.setMaxLines(1);
         nameView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams nameP = new LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        headerRow.addView(nameView, nameP);
+        headerRow.addView(nameView, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        // Expand/collapse indicator
+        // Select mode: tap sends just the letter, no expandable detail
+        if (selectMode) {
+            if (selectable) {
+                headerRow.setOnClickListener(v -> sendChar(letter));
+            } else {
+                headerRow.setClickable(false);
+            }
+
+            LinearLayout.LayoutParams rowP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowP.setMargins(0, dpToPx(2), 0, dpToPx(2));
+            headerRow.setLayoutParams(rowP);
+            return headerRow;
+        }
+
+        // Inventory mode: wrap in vertical layout with expandable detail section
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+
+        // Chevron
         TextView chevron = new TextView(this);
         chevron.setText("\u25BE"); // ▾
         chevron.setTextColor(Color.argb(120, 140, 150, 190));
@@ -1306,10 +1491,9 @@ public class BrogueActivity extends SDLActivity {
         chevron.setPadding(dpToPx(4), 0, 0, 0);
         headerRow.addView(chevron);
 
-        headerRow.setContentDescription(displayName);
         row.addView(headerRow);
 
-        // Expandable detail section (initially hidden)
+        // Expandable detail section
         LinearLayout detailSection = new LinearLayout(this);
         detailSection.setOrientation(LinearLayout.VERTICAL);
         detailSection.setVisibility(View.GONE);
@@ -1322,7 +1506,6 @@ public class BrogueActivity extends SDLActivity {
         detailBg.setColor(Color.argb(180, 15, 12, 32));
         detailSection.setBackground(detailBg);
 
-        // Description text
         if (!desc.isEmpty()) {
             TextView descView = new TextView(this);
             descView.setText(desc);
@@ -1334,14 +1517,12 @@ public class BrogueActivity extends SDLActivity {
             detailSection.addView(descView);
         }
 
-        // Action buttons
         if (!actions.isEmpty()) {
             LinearLayout actionRow = new LinearLayout(this);
             actionRow.setOrientation(LinearLayout.HORIZONTAL);
             actionRow.setGravity(Gravity.START);
 
-            String[] actionKeys = actions.split(",");
-            for (String ak : actionKeys) {
+            for (String ak : actions.split(",")) {
                 if (ak.isEmpty()) continue;
                 char actionChar = ak.charAt(0);
                 String label = actionLabel(actionChar);
@@ -1380,11 +1561,9 @@ public class BrogueActivity extends SDLActivity {
                     return false;
                 });
 
-                // Send item letter first, then action key
-                final char itemLetter = letter;
                 final char actionKey = actionChar;
                 actionBtn.setOnClickListener(v -> {
-                    sendChar(itemLetter);
+                    sendChar(letter);
                     v.postDelayed(() -> sendChar(actionKey), 50);
                 });
 
@@ -1399,10 +1578,8 @@ public class BrogueActivity extends SDLActivity {
 
         row.addView(detailSection);
 
-        // Tap header to expand/collapse (accordion — only one open at a time)
         headerRow.setOnClickListener(v -> {
             if (detailSection.getVisibility() == View.GONE) {
-                // Collapse previously expanded row
                 if (currentlyExpandedDetail != null
                         && currentlyExpandedDetail != detailSection) {
                     View prev = currentlyExpandedDetail;
@@ -1414,7 +1591,6 @@ public class BrogueActivity extends SDLActivity {
                 detailSection.setAlpha(0f);
                 detailSection.animate().alpha(1f).setDuration(150).start();
                 chevron.setText("\u25B4"); // ▴
-                // Scroll so the action buttons at the bottom of the row are visible.
                 row.post(() -> {
                     int rowBottom = row.getTop() + row.getHeight();
                     int visibleBottom = scrollView.getScrollY() + scrollView.getHeight();
@@ -1430,7 +1606,6 @@ public class BrogueActivity extends SDLActivity {
             }
         });
 
-        // Outer margin
         LinearLayout.LayoutParams rowP = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -1441,73 +1616,15 @@ public class BrogueActivity extends SDLActivity {
     }
 
     // Simplified row for item selection mode — tap sends just the letter.
-    private View makeSelectRow(JSONObject item) {
-        boolean selectable = item.optBoolean("selectable", true);
-        boolean equipped = item.optBoolean("equipped", false);
-        char letter = item.optString("letter", "?").charAt(0);
-        String name = item.optString("name", "???");
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
-        row.setMinimumHeight(dpToPx(44));
-
-        GradientDrawable rowBg = new GradientDrawable();
-        rowBg.setShape(GradientDrawable.RECTANGLE);
-        rowBg.setCornerRadius(dpToPx(3));
-        rowBg.setColor(selectable ? ITEM_BG : Color.argb(100, 15, 12, 30));
-        row.setBackground(new RippleDrawable(
-            ColorStateList.valueOf(RIPPLE_GLOW), rowBg, null));
-
-        // Letter badge
-        TextView letterView = new TextView(this);
-        letterView.setText(String.valueOf(letter));
-        letterView.setTextColor(selectable ? FLAME_EMBER : FLAME_DIM);
-        letterView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        letterView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        letterView.setGravity(Gravity.CENTER);
-        letterView.setMinWidth(dpToPx(24));
-        row.addView(letterView);
-
-        // Item name
-        TextView nameView = new TextView(this);
-        String displayName = name + (equipped ? " (equipped)" : "");
-        nameView.setText(displayName);
-        nameView.setTextColor(selectable ? GHOST_WHITE : Color.argb(100, 120, 115, 130));
-        nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        nameView.setTypeface(Typeface.MONOSPACE);
-        nameView.setPadding(dpToPx(6), 0, 0, 0);
-        nameView.setMaxLines(1);
-        nameView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams nameP = new LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        row.addView(nameView, nameP);
-
-        row.setContentDescription(displayName);
-
-        if (selectable) {
-            row.setOnTouchListener((v, e) -> {
-                if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                    v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(60).start();
-                } else if (e.getAction() == MotionEvent.ACTION_UP
-                        || e.getAction() == MotionEvent.ACTION_CANCEL) {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
-                }
-                return false;
-            });
-            row.setOnClickListener(v -> sendChar(letter));
-        } else {
-            row.setClickable(false);
-        }
-
-        LinearLayout.LayoutParams rowP = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        rowP.setMargins(0, dpToPx(2), 0, dpToPx(2));
-        row.setLayoutParams(rowP);
-
-        return row;
+    private void addMagicIndicator(LinearLayout row, int magicPolarity) {
+        if (magicPolarity == 0) return;
+        TextView v = new TextView(this);
+        v.setText(magicPolarity > 0 ? "\u29F3" : "\u29F2");
+        v.setTextColor(magicPolarity > 0 ? GOOD_MAGIC : BAD_MAGIC);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        v.setTypeface(Typeface.MONOSPACE);
+        v.setPadding(dpToPx(4), 0, 0, 0);
+        row.addView(v);
     }
 
     private String actionLabel(char key) {
@@ -1728,11 +1845,10 @@ public class BrogueActivity extends SDLActivity {
     private View submenuBackdrop;
 
     private void expandSubmenu(View submenu, View toggle) {
-        // Add a full-screen transparent backdrop to dismiss on outside tap
         if (submenuBackdrop == null) {
             submenuBackdrop = new View(this);
-            submenuBackdrop.setOnClickListener(v -> collapseSubmenu(submenu, toggle));
         }
+        submenuBackdrop.setOnClickListener(v -> collapseSubmenu(submenu, toggle));
         if (submenuBackdrop.getParent() != null) {
             ((ViewGroup) submenuBackdrop.getParent()).removeView(submenuBackdrop);
         }
@@ -1752,6 +1868,7 @@ public class BrogueActivity extends SDLActivity {
     }
 
     private void collapseSubmenu(View submenu, View toggle) {
+        if (submenu.getVisibility() != View.VISIBLE) return;
         if (submenuBackdrop != null && submenuBackdrop.getParent() != null) {
             ((ViewGroup) submenuBackdrop.getParent()).removeView(submenuBackdrop);
         }

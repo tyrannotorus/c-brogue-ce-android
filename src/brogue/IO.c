@@ -2846,7 +2846,8 @@ boolean getInputTextString(char *inputText,
     }
 
     char resultBuf[256];
-    boolean confirmed = androidGetTextInput(cleanPrompt, defaultEntry, maxLength, resultBuf);
+    boolean confirmed = androidGetTextInput(cleanPrompt, defaultEntry, maxLength,
+                                               textEntryType == TEXT_INPUT_NUMBERS, resultBuf);
 
     if (confirmed) {
         strcpy(inputText, resultBuf);
