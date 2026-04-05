@@ -3472,6 +3472,8 @@ extern "C" {
     void androidSaveGameAndExit(void);
     void androidAbandonGame(void);
     boolean androidSaveFileExists(void);
+    boolean androidSaveIsCompatible(void);
+    void androidShowStartMenu(boolean hasSave, boolean saveCompatible);
     void saveRecording(char *filePath);
     void saveRecordingNoPrompt(char *filePath);
     void parseFile(void);

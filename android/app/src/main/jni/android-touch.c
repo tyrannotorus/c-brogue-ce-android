@@ -153,6 +153,44 @@ void androidHideInventory(void) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+/* ---- Get dungeon seed ---- */
+
+JNIEXPORT jlong JNICALL
+Java_org_broguece_game_BrogueActivity_nativeGetSeed(
+        JNIEnv *env, jobject thiz) {
+    return (jlong)rogue.seed;
+}
+
+/* ---- Start menu ---- */
+
+#define START_MENU_NEW_GAME  0
+#define START_MENU_RESUME    1
+#define START_MENU_PLAY_SEED 2
+
+extern volatile enum NGCommands startMenuChoice; // defined in MainMenu.c
+
+void androidShowStartMenu(boolean hasSave, boolean saveCompatible) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "showStartMenu", "(ZZ)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid,
+                                    (jboolean)hasSave, (jboolean)saveCompatible);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeStartMenuResult(
+        JNIEnv *env, jobject thiz, jint choice) {
+    switch (choice) {
+        case START_MENU_NEW_GAME:  startMenuChoice = NG_NEW_GAME; break;
+        case START_MENU_RESUME:    startMenuChoice = NG_OPEN_GAME; break;
+        case START_MENU_PLAY_SEED: startMenuChoice = NG_NEW_GAME_WITH_SEED; break;
+        default:                   startMenuChoice = NG_NEW_GAME; break;
+    }
+}
+
 /* ---- Native text input dialog ---- */
 
 static pthread_mutex_t textInputMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -162,7 +200,7 @@ static boolean textInputConfirmed = false;
 static char    textInputResult[256];
 
 boolean androidGetTextInput(const char *prompt, const char *defaultText,
-                            int maxLen, char *outBuf) {
+                            int maxLen, boolean numericOnly, char *outBuf) {
     outBuf[0] = '\0';
 
     pthread_mutex_lock(&textInputMutex);
@@ -177,8 +215,9 @@ boolean androidGetTextInput(const char *prompt, const char *defaultText,
     jstring jPrompt = (*env)->NewStringUTF(env, prompt);
     jstring jDefault = (*env)->NewStringUTF(env, defaultText);
     jmethodID mid = (*env)->GetMethodID(env, cls, "showTextInputDialog",
-        "(Ljava/lang/String;Ljava/lang/String;I)V");
-    if (mid) (*env)->CallVoidMethod(env, activity, mid, jPrompt, jDefault, (jint)maxLen);
+        "(Ljava/lang/String;Ljava/lang/String;IZ)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, jPrompt, jDefault,
+                                    (jint)maxLen, (jboolean)numericOnly);
     (*env)->DeleteLocalRef(env, jPrompt);
     (*env)->DeleteLocalRef(env, jDefault);
     (*env)->DeleteLocalRef(env, cls);

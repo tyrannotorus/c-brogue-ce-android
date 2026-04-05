@@ -33,6 +33,10 @@
 #define MAGIC_POLARITY_NEUTRAL 0
 #define MAGIC_POLARITY_ANY 0
 
+// Prompt text shown in the native inventory UI during select mode.
+// Set by promptForItemOfType() before calling displayInventory().
+char androidInventoryPrompt[COLS] = "";
+
 item *initializeItem() {
     short i;
     item *theItem;
@@ -2884,11 +2888,15 @@ char displayInventory(unsigned short categoryMask,
 
     // Serialize inventory to JSON for the native Android UI.
     // mode: "inventory" = full browse with actions, "select" = pick one item.
+    extern char androidInventoryPrompt[COLS];
     char json[16384];
     int pos = 0;
+    char promptEsc[COLS * 2];
+    jsonEscape(promptEsc, androidInventoryPrompt, sizeof(promptEsc));
     pos += snprintf(json, sizeof(json),
-        "{\"mode\":\"%s\",\"items\":[",
-        waitForAcknowledge ? "inventory" : "select");
+        "{\"mode\":\"%s\",\"prompt\":\"%s\",\"items\":[",
+        waitForAcknowledge ? "inventory" : "select",
+        promptEsc);
 
     for (i = 0; i < itemNumber; i++) {
         theItem = itemList[i];
@@ -2903,6 +2911,8 @@ char displayInventory(unsigned short categoryMask,
         boolean selectable = (theItem->category & categoryMask) &&
             !(~(theItem->flags) & requiredFlags) &&
             !(theItem->flags & forbiddenFlags);
+
+        int magicPol = displayMagicCharForItem(theItem) ? itemMagicPolarity(theItem) : 0;
 
         char nameEsc[COLS*6];
         jsonEscape(nameEsc, nameClean, sizeof(nameEsc));
@@ -2937,25 +2947,25 @@ char displayInventory(unsigned short categoryMask,
             pos += snprintf(json + pos, sizeof(json) - pos,
                 "%s{\"letter\":\"%c\",\"name\":\"%s\",\"desc\":\"%s\","
                 "\"category\":%u,\"equipped\":%s,\"selectable\":%s,"
-                "\"actions\":\"%s\",\"equippedCount\":%d}",
+                "\"actions\":\"%s\",\"equippedCount\":%d,\"magicPolarity\":%d}",
                 (i > 0 ? "," : ""),
                 theItem->inventoryLetter, nameEsc, descEsc,
                 theItem->category,
                 (theItem->flags & ITEM_EQUIPPED) ? "true" : "false",
                 selectable ? "true" : "false",
-                actions, equippedItemCount);
+                actions, equippedItemCount, magicPol);
         } else {
             // Selection mode: no description or actions needed.
             pos += snprintf(json + pos, sizeof(json) - pos,
                 "%s{\"letter\":\"%c\",\"name\":\"%s\","
                 "\"category\":%u,\"equipped\":%s,\"selectable\":%s,"
-                "\"equippedCount\":%d}",
+                "\"equippedCount\":%d,\"magicPolarity\":%d}",
                 (i > 0 ? "," : ""),
                 theItem->inventoryLetter, nameEsc,
                 theItem->category,
                 (theItem->flags & ITEM_EQUIPPED) ? "true" : "false",
                 selectable ? "true" : "false",
-                equippedItemCount);
+                equippedItemCount, magicPol);
         }
     }
     pos += snprintf(json + pos, sizeof(json) - pos, "]}");
@@ -7512,7 +7522,11 @@ item *promptForItemOfType(unsigned short category,
 
     temporaryMessage(prompt, 0);
 
+    extern char androidInventoryPrompt[COLS];
+    strncpy(androidInventoryPrompt, prompt, COLS - 1);
+    androidInventoryPrompt[COLS - 1] = '\0';
     keystroke = displayInventory(category, requiredFlags, forbiddenFlags, false, allowInventoryActions);
+    androidInventoryPrompt[0] = '\0';
 
     if (!keystroke) {
         // This can happen if the player does an action with an item directly from the inventory screen via a button.

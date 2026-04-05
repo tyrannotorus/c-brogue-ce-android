@@ -197,6 +197,10 @@ static void initializeTitleFlames(boolean includeTitle,
         updateTitleFlames(colors, colorSources, flames);
 }
 
+// Set by the Java start menu callback (via android-touch.c JNI).
+// NG_NOTHING means no selection yet; any other value is the user's choice.
+volatile enum NGCommands startMenuChoice = NG_NOTHING;
+
 static void titleMenu() {
     // Static to avoid stack overflow — these are large for the wider grid
     static signed short flames[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)][3];
@@ -205,6 +209,8 @@ static void titleMenu() {
     static color colorStorage[TITLE_COLS];
     static unsigned char mask[TITLE_COLS][ROWS];
 
+    rogueEvent theEvent;
+
     androidSetOverlayVisible(false);
     setRenderMode(RENDER_TITLE);
     seedRandomGenerator(0);
@@ -212,12 +218,32 @@ static void titleMenu() {
     rogue.nextGameSeed = 0;
     blackOutScreen();
 
+    // --- Phase 1: Title screen with BROGUE text --- //
     initializeTitleFlames(true, colors, colorStorage, colorSources, flames, mask);
     rogue.creaturesWillFlashThisTurn = false;
 
-    rogueEvent theEvent;
+    boolean tapped = false;
+    while (!tapped) {
+        if (isApplicationActive()) {
+            updateTitleFlames(colors, colorSources, flames);
+            drawTitleFlames(flames, mask);
+            if (pauseBrogue(MENU_FLAME_UPDATE_DELAY, (PauseBehavior){.interuptForMouseMove = true})) {
+                nextBrogueEvent(&theEvent, true, false, true);
+                tapped = true;
+            }
+        } else {
+            pauseBrogue(MENU_FLAME_UPDATE_DELAY, PAUSE_BEHAVIOR_DEFAULT);
+        }
+    }
 
-    // Animate flames, wait for Play button from native overlay
+    // --- Phase 2: Start menu over flames (no title text) --- //
+    initializeTitleFlames(false, colors, colorStorage, colorSources, flames, mask);
+
+    boolean hasSave = androidSaveFileExists();
+    boolean saveCompat = hasSave ? androidSaveIsCompatible() : false;
+    startMenuChoice = NG_NOTHING;
+    androidShowStartMenu(hasSave, saveCompat);
+
     rogue.nextGame = NG_NOTHING;
     while (rogue.nextGame == NG_NOTHING) {
         if (isApplicationActive()) {
@@ -225,13 +251,18 @@ static void titleMenu() {
             drawTitleFlames(flames, mask);
             if (pauseBrogue(MENU_FLAME_UPDATE_DELAY, (PauseBehavior){.interuptForMouseMove = true})) {
                 nextBrogueEvent(&theEvent, true, false, true);
-                // Auto-load the fixed save file if it exists, otherwise new game.
-                if (androidSaveFileExists()) {
-                    rogue.nextGame = NG_OPEN_GAME;
+            }
+
+            if (startMenuChoice != NG_NOTHING) {
+                rogue.nextGame = startMenuChoice;
+                if (rogue.nextGame == NG_OPEN_GAME) {
                     snprintf(rogue.nextGamePath, sizeof(rogue.nextGamePath),
                              "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
-                } else {
-                    rogue.nextGame = NG_NEW_GAME;
+                } else if (rogue.nextGame == NG_NEW_GAME && hasSave) {
+                    char savePath[BROGUE_FILENAME_MAX];
+                    snprintf(savePath, sizeof(savePath),
+                             "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+                    remove(savePath);
                 }
             }
         } else {

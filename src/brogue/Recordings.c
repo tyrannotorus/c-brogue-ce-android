@@ -1220,6 +1220,28 @@ boolean androidSaveFileExists(void) {
     return fileExists(filePath);
 }
 
+// Check whether the fixed mobile save file is compatible with the current version.
+// Reads just the version header (first 15 bytes) without loading the full game.
+boolean androidSaveIsCompatible(void) {
+    char filePath[BROGUE_FILENAME_MAX];
+    snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+
+    FILE *f = fopen(filePath, "rb");
+    if (!f) return false;
+
+    char versionStr[16];
+    size_t n = fread(versionStr, 1, 15, f);
+    fclose(f);
+    if (n < 15) return false;
+    versionStr[15] = '\0';
+
+    unsigned short recPatch;
+    if (getPatchVersion(versionStr, &recPatch) && recPatch <= gameConst->patchVersion) {
+        return true; // same major.minor, patch <= ours
+    }
+    return (strcmp(versionStr, gameConst->recordingVersionString) == 0);
+}
+
 #define MAX_TEXT_INPUT_FILENAME_LENGTH (COLS - 12) // max length including the suffix
 
 void saveGame() {
