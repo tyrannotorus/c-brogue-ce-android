@@ -54,6 +54,10 @@ public class BrogueActivity extends SDLActivity {
     private static final int EQUIPPED_GLOW = Color.argb(220, 45, 35, 55);
     private static final int ACTION_BG     = Color.argb(220, 30, 25, 55);
 
+    // Right-edge safe margin — accommodates devices (e.g. Poco M3 / MIUI)
+    // where the navigation bar area is reserved even in immersive mode.
+    private static final int EDGE_SAFE_DP  = 48;
+
     private FrameLayout gameOverlay;
     private FrameLayout inventoryOverlay;
     private View currentlyExpandedDetail;
@@ -153,6 +157,7 @@ public class BrogueActivity extends SDLActivity {
 
             if ("mouse".equals(key)) {
                 btn.setOnClickListener(v -> {
+                    collapseSubmenu(submenu, menuBtn);
                     executeAction("mouse");
                     boolean active = v.getTag() != null
                         && v.getTag() instanceof Boolean && (boolean) v.getTag();
@@ -160,19 +165,10 @@ public class BrogueActivity extends SDLActivity {
                     v.setTag(active);
                     animateToggle(v, active);
                 });
-            } else if ("click".equals(key)) {
-                btn.setOnClickListener(v -> {
-                    executeAction("click");
-                    // Reset mouse toggle if present
-                    View mouseView = findToolbarButton("mouse");
-                    if (mouseView != null) {
-                        mouseView.setTag(false);
-                        animateToggle(mouseView, false);
-                    }
-                    pulseButton(v);
-                });
             } else {
                 btn.setOnClickListener(v -> {
+                    collapseSubmenu(submenu, menuBtn);
+                    resetMouseToggle();
                     executeAction(key);
                     pulseButton(v);
                 });
@@ -200,6 +196,14 @@ public class BrogueActivity extends SDLActivity {
             if (key.equals(tag)) return child;
         }
         return null;
+    }
+
+    private void resetMouseToggle() {
+        View mouseView = findToolbarButton("mouse");
+        if (mouseView != null) {
+            mouseView.setTag(false);
+            animateToggle(mouseView, false);
+        }
     }
 
     @Override
@@ -269,6 +273,7 @@ public class BrogueActivity extends SDLActivity {
         submenu.addView(exitItem, exitP);
 
         menuBtn.setOnClickListener(v -> {
+            resetMouseToggle();
             boolean open = submenu.getVisibility() == View.VISIBLE;
             if (open) {
                 collapseSubmenu(submenu, menuBtn);
@@ -295,10 +300,12 @@ public class BrogueActivity extends SDLActivity {
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        gameOverlay.addView(bottomGroup, new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM | Gravity.END));
+            Gravity.BOTTOM | Gravity.END);
+        bottomParams.setMargins(0, 0, dpToPx(EDGE_SAFE_DP), 0);
+        gameOverlay.addView(bottomGroup, bottomParams);
 
         rebuildToolbar();
 
@@ -390,7 +397,7 @@ public class BrogueActivity extends SDLActivity {
         FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
             panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, dpToPx(8), dpToPx(8), dpToPx(52));
+        scrollParams.setMargins(0, dpToPx(8), dpToPx(EDGE_SAFE_DP), dpToPx(52));
 
         inventoryOverlay.addView(scrollView, scrollParams);
         inventoryOverlay.setVisibility(View.VISIBLE);
@@ -495,7 +502,7 @@ public class BrogueActivity extends SDLActivity {
         FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
             panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, dpToPx(8), dpToPx(8), dpToPx(52));
+        scrollParams.setMargins(0, dpToPx(8), dpToPx(EDGE_SAFE_DP), dpToPx(52));
 
         inventoryOverlay.addView(scrollView, scrollParams);
         inventoryOverlay.setVisibility(View.VISIBLE);
@@ -610,7 +617,7 @@ public class BrogueActivity extends SDLActivity {
         FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
             panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, dpToPx(8), dpToPx(8), dpToPx(52));
+        scrollParams.setMargins(0, dpToPx(8), dpToPx(EDGE_SAFE_DP), dpToPx(52));
 
         inventoryOverlay.addView(scrollView, scrollParams);
         inventoryOverlay.setVisibility(View.VISIBLE);
@@ -1011,7 +1018,7 @@ public class BrogueActivity extends SDLActivity {
                 FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
                     panelWidth, FrameLayout.LayoutParams.MATCH_PARENT,
                     Gravity.END);
-                scrollParams.setMargins(0, dpToPx(8), 0, dpToPx(52));
+                scrollParams.setMargins(0, dpToPx(8), dpToPx(EDGE_SAFE_DP), dpToPx(52));
 
                 inventoryOverlay.addView(scrollView, scrollParams);
                 inventoryOverlay.setVisibility(View.VISIBLE);
@@ -1718,7 +1725,21 @@ public class BrogueActivity extends SDLActivity {
 
     // ---- Animations ----
 
+    private View submenuBackdrop;
+
     private void expandSubmenu(View submenu, View toggle) {
+        // Add a full-screen transparent backdrop to dismiss on outside tap
+        if (submenuBackdrop == null) {
+            submenuBackdrop = new View(this);
+            submenuBackdrop.setOnClickListener(v -> collapseSubmenu(submenu, toggle));
+        }
+        if (submenuBackdrop.getParent() != null) {
+            ((ViewGroup) submenuBackdrop.getParent()).removeView(submenuBackdrop);
+        }
+        gameOverlay.addView(submenuBackdrop, 0, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
         submenu.setAlpha(0f);
         submenu.setTranslationY(dpToPx(8));
         submenu.setVisibility(View.VISIBLE);
@@ -1731,6 +1752,9 @@ public class BrogueActivity extends SDLActivity {
     }
 
     private void collapseSubmenu(View submenu, View toggle) {
+        if (submenuBackdrop != null && submenuBackdrop.getParent() != null) {
+            ((ViewGroup) submenuBackdrop.getParent()).removeView(submenuBackdrop);
+        }
         submenu.animate()
             .alpha(0f).translationY(dpToPx(6))
             .setDuration(100)
