@@ -1,0 +1,6 @@
+- Added start menu between title screen and gameplay (New Game, Resume Game, Play Seed)
+- Added right-edge safe margin for devices with persistent navigation bars
+- Copy Seed to Clipboard replaces View Dungeon Seed in settings
+- Inventory shows magic detection indicators after using Detect Magic
+- Fixed soft-lock when equipping a third ring with two already worn
+- Removed letter badges from inventory rows
