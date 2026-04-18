@@ -2,9 +2,12 @@ package org.broguece.game;
 
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
+import android.content.ClipData;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Point;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -13,6 +16,7 @@ import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -23,6 +27,7 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.EditText;
 import android.widget.ScrollView;
@@ -90,6 +95,10 @@ public class BrogueActivity extends SDLActivity {
     private static final java.util.Set<String> DEFAULT_PINNED =
         new java.util.HashSet<>(java.util.Arrays.asList("inventory", "mouse", "click"));
 
+    // Master display order for the Actions panel. The toolbar renders the
+    // pinned subset in this order. User-reorderable via drag handle.
+    private java.util.List<String> cachedActionOrder;
+
     private int actionIconRes(String key) {
         switch (key) {
             case "inventory": return R.drawable.ic_money_bag;
@@ -136,6 +145,72 @@ public class BrogueActivity extends SDLActivity {
         rebuildToolbar();
     }
 
+    // Master ordering across all registered actions. Any missing keys are
+    // appended in registry order so a newly-added action always shows up.
+    private java.util.List<String> getActionOrder() {
+        if (cachedActionOrder != null) return cachedActionOrder;
+
+        android.content.SharedPreferences prefs =
+            getSharedPreferences("brogue_toolbar", MODE_PRIVATE);
+        String json = prefs.getString("action_order", null);
+        java.util.List<String> list = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+
+        if (json != null) {
+            try {
+                JSONArray arr = new JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    String k = arr.optString(i, null);
+                    if (k != null && !seen.contains(k) && isKnownAction(k)) {
+                        list.add(k);
+                        seen.add(k);
+                    }
+                }
+            } catch (Exception ignored) { }
+        }
+        for (String[] entry : ACTION_KEYS) {
+            if (!seen.contains(entry[0])) list.add(entry[0]);
+        }
+        cachedActionOrder = list;
+        return cachedActionOrder;
+    }
+
+    private void setActionOrder(java.util.List<String> order) {
+        java.util.List<String> clean = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String k : order) {
+            if (k != null && !seen.contains(k) && isKnownAction(k)) {
+                clean.add(k);
+                seen.add(k);
+            }
+        }
+        for (String[] entry : ACTION_KEYS) {
+            if (!seen.contains(entry[0])) clean.add(entry[0]);
+        }
+        cachedActionOrder = clean;
+
+        JSONArray arr = new JSONArray();
+        for (String k : clean) arr.put(k);
+        getSharedPreferences("brogue_toolbar", MODE_PRIVATE)
+            .edit()
+            .putString("action_order", arr.toString())
+            .apply();
+    }
+
+    private boolean isKnownAction(String key) {
+        for (String[] entry : ACTION_KEYS) {
+            if (entry[0].equals(key)) return true;
+        }
+        return false;
+    }
+
+    private String actionLabel(String key) {
+        for (String[] entry : ACTION_KEYS) {
+            if (entry[0].equals(key)) return entry[1];
+        }
+        return key;
+    }
+
     private void executeAction(String key) {
         switch (key) {
             case "inventory": sendKey(KeyEvent.KEYCODE_I); break;
@@ -157,9 +232,8 @@ public class BrogueActivity extends SDLActivity {
         int btnSize = dpToPx(44);
         int btnMargin = dpToPx(3);
 
-        // Add pinned action buttons in registry order
-        for (String[] entry : ACTION_KEYS) {
-            String key = entry[0];
+        // Add pinned action buttons in master order
+        for (String key : getActionOrder()) {
             if (!pinned.contains(key)) continue;
 
             View btn = makeIconBarButton(actionIconRes(key));
@@ -213,6 +287,95 @@ public class BrogueActivity extends SDLActivity {
         if (mouseView != null && mouseView.getTag() instanceof Boolean && (boolean) mouseView.getTag()) {
             mouseView.setTag(false);
             animateToggle(mouseView, false);
+        }
+    }
+
+    // Drag listener for the Actions-panel rows container. Moves the dragged
+    // row to the hovered index for live feedback, then persists master order
+    // and rebuilds the toolbar on drag end.
+    private final View.OnDragListener rowsDragListener = (host, event) -> {
+        if (!(host instanceof LinearLayout)) return false;
+        LinearLayout rows = (LinearLayout) host;
+        Object local = event.getLocalState();
+        if (!(local instanceof View)) return false;
+        View dragged = (View) local;
+
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return event.getClipDescription() != null
+                    && event.getClipDescription().getLabel() != null
+                    && "brogue_action".contentEquals(event.getClipDescription().getLabel());
+            case DragEvent.ACTION_DRAG_LOCATION: {
+                int target = indexForDragY(rows, event.getY(), dragged);
+                int current = rows.indexOfChild(dragged);
+                if (target >= 0 && target != current) {
+                    rows.removeView(dragged);
+                    rows.addView(dragged, target);
+                }
+                return true;
+            }
+            case DragEvent.ACTION_DRAG_ENDED:
+                dragged.setAlpha(1f);
+                persistRowOrder(rows);
+                rebuildToolbar();
+                return true;
+            case DragEvent.ACTION_DROP:
+                return true;
+            default:
+                return true;
+        }
+    };
+
+    // Target index for the dragged row. Rows are uniform height + margins, so
+    // we compute a single slot size and use index-based slot bounds rather
+    // than each child's live getY() (which is stale for one frame after a
+    // swap and causes thrash). While the finger is still within the dragged
+    // row's own slot we don't swap — that's the dead-zone that kills jitter.
+    private int indexForDragY(LinearLayout rows, float y, View dragged) {
+        int n = rows.getChildCount();
+        if (n == 0) return 0;
+        int current = rows.indexOfChild(dragged);
+
+        int slot = dragged.getHeight();
+        ViewGroup.LayoutParams lp = dragged.getLayoutParams();
+        if (lp instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+            slot += llp.topMargin + llp.bottomMargin;
+        }
+        if (slot <= 0) return current;
+
+        float slotTop = current * slot;
+        float slotBottom = slotTop + slot;
+        if (y >= slotTop && y < slotBottom) return current;
+
+        int target = (int) (y / slot);
+        if (target < 0) target = 0;
+        if (target >= n) target = n - 1;
+        return target;
+    }
+
+    private void persistRowOrder(LinearLayout rows) {
+        java.util.List<String> order = new java.util.ArrayList<>();
+        for (int i = 0; i < rows.getChildCount(); i++) {
+            Object tag = rows.getChildAt(i).getTag(R.id.action_key_tag);
+            if (tag instanceof String) order.add((String) tag);
+        }
+        setActionOrder(order);
+    }
+
+    // Drag shadow mirrors the row at actual size, anchored at the touch point
+    // under the finger so the shadow tracks cleanly.
+    private static class ReorderDragShadow extends View.DragShadowBuilder {
+        ReorderDragShadow(View v) { super(v); }
+        @Override
+        public void onProvideShadowMetrics(Point outSize, Point outTouch) {
+            View v = getView();
+            outSize.set(v.getWidth(), v.getHeight());
+            outTouch.set(v.getWidth() / 2, v.getHeight() / 2);
+        }
+        @Override
+        public void onDrawShadow(Canvas canvas) {
+            getView().draw(canvas);
         }
     }
 
@@ -506,10 +669,15 @@ public class BrogueActivity extends SDLActivity {
         hSepP.setMargins(dpToPx(4), 0, dpToPx(4), dpToPx(8));
         panel.addView(headerSep, hSepP);
 
-        for (String[] entry : ACTION_KEYS) {
-            String key = entry[0];
-            String label = entry[1];
-            addActionRow(panel, key, label);
+        LinearLayout rowsContainer = new LinearLayout(this);
+        rowsContainer.setOrientation(LinearLayout.VERTICAL);
+        rowsContainer.setOnDragListener(rowsDragListener);
+        panel.addView(rowsContainer, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        for (String key : getActionOrder()) {
+            addActionRow(rowsContainer, key, actionLabel(key));
         }
 
         int panelWidth = Math.min(dpToPx(280),
@@ -827,8 +995,9 @@ public class BrogueActivity extends SDLActivity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+        row.setPadding(dpToPx(6), dpToPx(10), dpToPx(12), dpToPx(10));
         row.setMinimumHeight(dpToPx(44));
+        row.setTag(R.id.action_key_tag, key);
 
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.RECTANGLE);
@@ -843,6 +1012,27 @@ public class BrogueActivity extends SDLActivity {
             } else if (e.getAction() == MotionEvent.ACTION_UP
                     || e.getAction() == MotionEvent.ACTION_CANCEL) {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+            }
+            return false;
+        });
+
+        // Drag handle — starts row drag on touch-down (no long-press needed).
+        ImageView handle = new ImageView(this);
+        handle.setImageResource(R.drawable.ic_drag_handle);
+        handle.setColorFilter(BORDER_ACTIVE);
+        handle.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int handleSize = dpToPx(32);
+        LinearLayout.LayoutParams handleP = new LinearLayout.LayoutParams(handleSize, handleSize);
+        handleP.setMargins(0, 0, dpToPx(4), 0);
+        row.addView(handle, handleP);
+        handle.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                ClipData data = ClipData.newPlainText("brogue_action", key);
+                View.DragShadowBuilder shadow = new ReorderDragShadow(row);
+                if (row.startDragAndDrop(data, shadow, row, 0)) {
+                    row.setAlpha(0.3f);
+                }
+                return true;
             }
             return false;
         });
