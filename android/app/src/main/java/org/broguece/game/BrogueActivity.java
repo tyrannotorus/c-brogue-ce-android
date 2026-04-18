@@ -3,7 +3,9 @@ package org.broguece.game;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.content.ClipData;
+import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.net.Uri;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -918,6 +920,9 @@ public class BrogueActivity extends SDLActivity {
                 nativeStartMenuResult(START_MENU_PLAY_SEED);
             });
 
+            // Credits button — overlays a credits modal; start menu stays behind
+            addStartMenuButton(panel, "Credits", true, v -> showAboutModal());
+
             int panelWidth = Math.min(dpToPx(300),
                 (int)(getResources().getDisplayMetrics().widthPixels * 0.7f));
 
@@ -990,6 +995,150 @@ public class BrogueActivity extends SDLActivity {
     }
 
     private native void nativeStartMenuResult(int choice);
+
+    // ---- About modal ----
+
+    private View aboutOverlay;
+
+    private void showAboutModal() {
+        if (aboutOverlay != null && aboutOverlay.getParent() != null) {
+            ((ViewGroup) aboutOverlay.getParent()).removeView(aboutOverlay);
+        }
+
+        FrameLayout root = new FrameLayout(this);
+        aboutOverlay = root;
+
+        View backdrop = new View(this);
+        backdrop.setBackgroundColor(Color.argb(160, 0, 0, 0));
+        backdrop.setOnClickListener(v -> dismissAboutModal());
+        root.addView(backdrop, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(16);
+        panel.setPadding(pad, pad, pad, pad);
+
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setShape(GradientDrawable.RECTANGLE);
+        panelBg.setCornerRadius(dpToPx(6));
+        panelBg.setColor(INVENTORY_BG);
+        panelBg.setStroke(1, BORDER_DIM);
+        panel.setBackground(panelBg);
+        panel.setElevation(dpToPx(12));
+
+        TextView header = new TextView(this);
+        header.setText("CREDITS");
+        header.setTextColor(FLAME_EMBER);
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        header.setLetterSpacing(0.2f);
+        header.setGravity(Gravity.CENTER);
+        header.setPadding(0, dpToPx(4), 0, dpToPx(8));
+        panel.addView(header);
+
+        View sep = new View(this);
+        GradientDrawable sepGrad = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+        sep.setBackground(sepGrad);
+        LinearLayout.LayoutParams sepP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        sepP.setMargins(dpToPx(8), 0, dpToPx(8), dpToPx(12));
+        panel.addView(sep, sepP);
+
+        addAboutCredit(panel,
+            "Brogue",
+            "Original game by Brian Walker (Pender)",
+            "https://sites.google.com/site/broguegame/");
+        addAboutCredit(panel,
+            "Brogue: Community Edition",
+            "tmewett and the Brogue CE contributors",
+            "https://github.com/tmewett/BrogueCE");
+        addAboutCredit(panel,
+            "Android Port",
+            "werewolf.camp",
+            "https://werewolf.camp");
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(panel);
+
+        int panelWidth = Math.min(dpToPx(320),
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.8f));
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(
+            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        root.addView(scroll, panelParams);
+
+        addContentView(root, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        panel.setAlpha(0f);
+        panel.setScaleX(0.94f);
+        panel.setScaleY(0.94f);
+        panel.animate()
+            .alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(220)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .start();
+    }
+
+    private void dismissAboutModal() {
+        if (aboutOverlay != null && aboutOverlay.getParent() != null) {
+            ((ViewGroup) aboutOverlay.getParent()).removeView(aboutOverlay);
+        }
+        aboutOverlay = null;
+    }
+
+    private void addAboutCredit(LinearLayout panel, String title, String line, String url) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(dpToPx(4), dpToPx(6), dpToPx(4), dpToPx(6));
+
+        TextView titleView = new TextView(this);
+        titleView.setText(title);
+        titleView.setTextColor(GHOST_WHITE);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        titleView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        block.addView(titleView);
+
+        TextView lineView = new TextView(this);
+        lineView.setText(line);
+        lineView.setTextColor(PALE_BLUE);
+        lineView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        lineView.setTypeface(Typeface.MONOSPACE);
+        LinearLayout.LayoutParams lineP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        lineP.setMargins(0, dpToPx(2), 0, dpToPx(2));
+        block.addView(lineView, lineP);
+
+        TextView linkView = new TextView(this);
+        linkView.setText(url);
+        linkView.setTextColor(FLAME_EMBER);
+        linkView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        linkView.setTypeface(Typeface.MONOSPACE);
+        linkView.setPaintFlags(linkView.getPaintFlags()
+            | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        linkView.setPadding(0, dpToPx(2), 0, dpToPx(2));
+        linkView.setOnClickListener(v -> openUrl(url));
+        block.addView(linkView);
+
+        LinearLayout.LayoutParams blockP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        blockP.setMargins(0, dpToPx(4), 0, dpToPx(4));
+        panel.addView(block, blockP);
+    }
+
+    private void openUrl(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception ignored) { }
+    }
 
     private void addActionRow(LinearLayout panel, String key, String label) {
         LinearLayout row = new LinearLayout(this);
