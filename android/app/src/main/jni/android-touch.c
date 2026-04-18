@@ -191,6 +191,25 @@ Java_org_broguece_game_BrogueActivity_nativeStartMenuResult(
     }
 }
 
+/*
+ * Same as nativeStartMenuResult but lets the caller supply a specific seed.
+ * When choice == START_MENU_PLAY_SEED and seed > 0, pre-populating
+ * rogue.nextGameSeed causes MainMenu.c to skip its in-engine seed prompt.
+ */
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeStartMenuResultWithSeed(
+        JNIEnv *env, jobject thiz, jint choice, jlong seed) {
+    if (choice == START_MENU_PLAY_SEED && seed > 0) {
+        rogue.nextGameSeed = (uint64_t)seed;
+    }
+    switch (choice) {
+        case START_MENU_NEW_GAME:  startMenuChoice = NG_NEW_GAME; break;
+        case START_MENU_RESUME:    startMenuChoice = NG_OPEN_GAME; break;
+        case START_MENU_PLAY_SEED: startMenuChoice = NG_NEW_GAME_WITH_SEED; break;
+        default:                   startMenuChoice = NG_NEW_GAME; break;
+    }
+}
+
 /* ---- Native text input dialog ---- */
 
 static pthread_mutex_t textInputMutex = PTHREAD_MUTEX_INITIALIZER;

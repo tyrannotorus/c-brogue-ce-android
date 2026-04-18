@@ -914,11 +914,8 @@ public class BrogueActivity extends SDLActivity {
                     nativeStartMenuResult(START_MENU_RESUME);
                 });
 
-            // Play Seed button
-            addStartMenuButton(panel, "Play Seed", true, v -> {
-                dismissStartMenu();
-                nativeStartMenuResult(START_MENU_PLAY_SEED);
-            });
+            // Play Seeds button — opens submodal with custom/weekly/curated
+            addStartMenuButton(panel, "Play Seeds", true, v -> showPlaySeedsModal());
 
             // Credits button — overlays a credits modal; start menu stays behind
             addStartMenuButton(panel, "Credits", true, v -> showAboutModal());
@@ -944,6 +941,14 @@ public class BrogueActivity extends SDLActivity {
                 .setDuration(250)
                 .setInterpolator(new DecelerateInterpolator(1.5f))
                 .start();
+
+            // If the user cancelled out of the custom-seed prompt, return
+            // them to the Play Seeds modal they came from instead of the
+            // bare title menu.
+            if (reshowPlaySeedsOnStartMenu) {
+                reshowPlaySeedsOnStartMenu = false;
+                showPlaySeedsModal();
+            }
         });
     }
 
@@ -995,6 +1000,10 @@ public class BrogueActivity extends SDLActivity {
     }
 
     private native void nativeStartMenuResult(int choice);
+
+    // Start the "Play Seed" flow with a specific seed (skipping the in-engine
+    // seed prompt). A non-zero seed pre-populates rogue.nextGameSeed.
+    private native void nativeStartMenuResultWithSeed(int choice, long seed);
 
     // ---- About modal ----
 
@@ -1138,6 +1147,240 @@ public class BrogueActivity extends SDLActivity {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
         } catch (Exception ignored) { }
+    }
+
+    // ---- Play Seeds modal ----
+
+    // Hardcoded interesting seeds (placeholder — V1 for UI; V2 will fetch).
+    // Each row is { seed, short description (~5 words) }.
+    private static final String[][] INTERESTING_SEEDS = {
+        {"20260414", "This week's contest seed"},
+        {"20260407", "Artifact-rich early corridors"},
+        {"20260331", "Tight layout, many snakes"},
+        {"20260324", "Bountiful alchemy and scrolls"},
+        {"20260303", "Speedrun-friendly routes"},
+        {"1337",     "Community classic, vault on D2"},
+        {"42",       "Legendary first-timer run"},
+        {"7777",     "Lucky rune gauntlet"},
+    };
+
+    private View playSeedsOverlay;
+
+    // When true, showStartMenu will re-open the Play Seeds modal on top of
+    // itself and clear the flag. Set before routing to the C-side custom-seed
+    // prompt so cancelling the prompt returns the user to Play Seeds rather
+    // than stranding them on the bare title menu.
+    private boolean reshowPlaySeedsOnStartMenu;
+
+    /**
+     * Current weekly-contest seed on r/brogueforum: the most-recent Tuesday
+     * (≤ today), formatted as yyyymmdd. Threads are posted every Tuesday.
+     */
+    private long currentWeeklySeed() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        int dow = cal.get(java.util.Calendar.DAY_OF_WEEK); // Sun=1..Sat=7
+        int daysSinceTuesday = (dow - java.util.Calendar.TUESDAY + 7) % 7;
+        cal.add(java.util.Calendar.DAY_OF_MONTH, -daysSinceTuesday);
+        int y = cal.get(java.util.Calendar.YEAR);
+        int m = cal.get(java.util.Calendar.MONTH) + 1;
+        int d = cal.get(java.util.Calendar.DAY_OF_MONTH);
+        return (long) y * 10000L + (long) m * 100L + (long) d;
+    }
+
+    private void showPlaySeedsModal() {
+        if (playSeedsOverlay != null && playSeedsOverlay.getParent() != null) {
+            ((ViewGroup) playSeedsOverlay.getParent()).removeView(playSeedsOverlay);
+        }
+
+        FrameLayout root = new FrameLayout(this);
+        playSeedsOverlay = root;
+
+        View backdrop = new View(this);
+        backdrop.setBackgroundColor(Color.argb(160, 0, 0, 0));
+        backdrop.setOnClickListener(v -> dismissPlaySeedsModal());
+        root.addView(backdrop, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(16);
+        panel.setPadding(pad, pad, pad, pad);
+
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setShape(GradientDrawable.RECTANGLE);
+        panelBg.setCornerRadius(dpToPx(6));
+        panelBg.setColor(INVENTORY_BG);
+        panelBg.setStroke(1, BORDER_DIM);
+        panel.setBackground(panelBg);
+        panel.setElevation(dpToPx(12));
+
+        TextView header = new TextView(this);
+        header.setText("PLAY SEEDS");
+        header.setTextColor(FLAME_EMBER);
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        header.setLetterSpacing(0.2f);
+        header.setGravity(Gravity.CENTER);
+        header.setPadding(0, dpToPx(4), 0, dpToPx(8));
+        panel.addView(header);
+
+        View sep = new View(this);
+        GradientDrawable sepGrad = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+        sep.setBackground(sepGrad);
+        LinearLayout.LayoutParams sepP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        sepP.setMargins(dpToPx(8), 0, dpToPx(8), dpToPx(12));
+        panel.addView(sep, sepP);
+
+        // Custom Seed section
+        addSeedSectionHeader(panel, "CUSTOM SEED", null, null);
+        addStartMenuButton(panel, "Enter Seed Number...", true, v -> {
+            reshowPlaySeedsOnStartMenu = true;
+            dismissPlaySeedsModal();
+            dismissStartMenu();
+            nativeStartMenuResult(START_MENU_PLAY_SEED);
+        });
+
+        // Weekly Seed section — follows r/brogueforum's weekly contest
+        final long weekly = currentWeeklySeed();
+        addSeedSectionHeader(panel,
+            "THIS WEEK'S SEED",
+            "Follow the contest at r/brogueforum",
+            "https://www.reddit.com/r/brogueforum/");
+        addStartMenuButton(panel, String.valueOf(weekly), true, v -> {
+            dismissPlaySeedsModal();
+            dismissStartMenu();
+            nativeStartMenuResultWithSeed(START_MENU_PLAY_SEED, weekly);
+        });
+
+        // Interesting Seeds section
+        addSeedSectionHeader(panel, "INTERESTING SEEDS", null, null);
+        for (String[] entry : INTERESTING_SEEDS) {
+            final long seed;
+            try { seed = Long.parseLong(entry[0]); }
+            catch (NumberFormatException e) { continue; }
+            addInterestingSeedRow(panel, seed, entry[1]);
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(panel);
+
+        int panelWidth = Math.min(dpToPx(340),
+            (int)(getResources().getDisplayMetrics().widthPixels * 0.85f));
+        int maxHeight = (int)(getResources().getDisplayMetrics().heightPixels * 0.85f);
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(
+            panelWidth, Math.min(maxHeight, FrameLayout.LayoutParams.WRAP_CONTENT),
+            Gravity.CENTER);
+        root.addView(scroll, panelParams);
+
+        addContentView(root, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
+
+        panel.setAlpha(0f);
+        panel.setScaleX(0.94f);
+        panel.setScaleY(0.94f);
+        panel.animate()
+            .alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(220)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .start();
+    }
+
+    private void dismissPlaySeedsModal() {
+        if (playSeedsOverlay != null && playSeedsOverlay.getParent() != null) {
+            ((ViewGroup) playSeedsOverlay.getParent()).removeView(playSeedsOverlay);
+        }
+        playSeedsOverlay = null;
+    }
+
+    private void addSeedSectionHeader(LinearLayout panel, String title,
+                                       String subtitle, String url) {
+        TextView header = new TextView(this);
+        header.setText(title);
+        header.setTextColor(FLAME_EMBER);
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        header.setLetterSpacing(0.15f);
+        header.setPadding(dpToPx(4), dpToPx(14), 0,
+            subtitle == null ? dpToPx(4) : dpToPx(2));
+        panel.addView(header);
+
+        if (subtitle != null) {
+            TextView sub = new TextView(this);
+            sub.setText(subtitle);
+            sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+            sub.setTypeface(Typeface.MONOSPACE);
+            sub.setPadding(dpToPx(4), 0, 0, dpToPx(4));
+            if (url != null) {
+                sub.setTextColor(FLAME_EMBER);
+                sub.setPaintFlags(sub.getPaintFlags()
+                    | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+                sub.setOnClickListener(v -> openUrl(url));
+            } else {
+                sub.setTextColor(PALE_BLUE);
+            }
+            panel.addView(sub);
+        }
+
+        View sep = new View(this);
+        GradientDrawable sepGrad = new GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{ FLAME_DIM, FLAME_EMBER, FLAME_DIM });
+        sep.setBackground(sepGrad);
+        LinearLayout.LayoutParams sepP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        sepP.setMargins(dpToPx(4), 0, dpToPx(4), dpToPx(8));
+        panel.addView(sep, sepP);
+    }
+
+    private void addInterestingSeedRow(LinearLayout panel, long seed, String description) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8));
+        row.setMinimumHeight(dpToPx(44));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dpToPx(4));
+        bg.setColor(ITEM_BG);
+        row.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(RIPPLE_GLOW), bg, null));
+
+        TextView seedView = new TextView(this);
+        seedView.setText(String.valueOf(seed));
+        seedView.setTextColor(GHOST_WHITE);
+        seedView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        seedView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        LinearLayout.LayoutParams seedP = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        seedP.setMargins(0, 0, dpToPx(10), 0);
+        row.addView(seedView, seedP);
+
+        TextView descView = new TextView(this);
+        descView.setText(description);
+        descView.setTextColor(PALE_BLUE);
+        descView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        descView.setTypeface(Typeface.MONOSPACE);
+        row.addView(descView, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        row.setOnClickListener(v -> {
+            dismissPlaySeedsModal();
+            dismissStartMenu();
+            nativeStartMenuResultWithSeed(START_MENU_PLAY_SEED, seed);
+        });
+
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        p.setMargins(0, dpToPx(2), 0, dpToPx(2));
+        panel.addView(row, p);
     }
 
     private void addActionRow(LinearLayout panel, String key, String label) {
