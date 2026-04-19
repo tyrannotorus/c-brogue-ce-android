@@ -24,6 +24,7 @@
 #include "Rogue.h"
 #include "GlobalsBase.h"
 #include "Globals.h"
+#include "android-stats.h"
 
 void playerRuns(short direction) {
     boolean cardinalPassability[4];

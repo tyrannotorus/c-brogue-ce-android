@@ -24,6 +24,7 @@
 #include "Rogue.h"
 #include "GlobalsBase.h"
 #include "Globals.h"
+#include "android-stats.h"
 
 
 /* Combat rules:
@@ -1738,6 +1739,14 @@ void killCreature(creature *decedent, boolean administrativeDeath) {
     demoteMonsterFromLeadership(decedent);
     if (decedent->leader) {
         checkForContinuedLeadership(decedent->leader);
+    }
+
+    // Android stats: fire-and-forget monster-kill event. Skip administrative
+    // deaths (unspawning, phoenix-prevention, etc. — not "real" kills), the
+    // player itself (handled by gameOver), and anything during playback/save
+    // replay (rogue.playbackMode covers both).
+    if (!administrativeDeath && decedent != &player && !rogue.playbackMode) {
+        androidNotifyMonsterKilled(monsterCatalog[decedent->info.monsterID].monsterName);
     }
 }
 

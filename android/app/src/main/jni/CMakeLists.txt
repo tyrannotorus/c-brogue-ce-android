@@ -50,6 +50,7 @@ set(PLATFORM_SOURCES
 set(ANDROID_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/android-touch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/android-assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/android-stats.c
 )
 
 # ---- Build shared library ----
