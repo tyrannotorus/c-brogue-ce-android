@@ -1,0 +1,2 @@
+- Auto-save when app is backgrounded
+- Fix resume game on main menu
