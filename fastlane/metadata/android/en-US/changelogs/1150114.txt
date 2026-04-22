@@ -1,0 +1,8 @@
+- Added Credits Menu
+- Added Community Menu
+- Added Personal Stats Menu
+- Added Weekly Contest Menu
+- Added Fun Seeds Menu
+- Added Achievements
+- Added draggable ordering of toolbar buttons
+- Huge slop cleanup, but still full of slop
