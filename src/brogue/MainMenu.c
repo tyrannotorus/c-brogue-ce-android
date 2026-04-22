@@ -843,12 +843,6 @@ void mainBrogueJunction() {
                 initializeRogue(rogue.nextGameSeed);
                 startLevel(rogue.depthLevel, 1); // descending into level 1
 
-                // Android stats: a "play" is any freshly-started run (random,
-                // custom seed, weekly, fun). Resumed saves and recording
-                // playback are not counted — they go through other cases.
-                // Pass the actual seed in use — rogue.seed holds the value
-                // after initializeRogue, whether user-entered or clock-
-                // generated.
                 if (!rogue.playbackMode) {
                     androidNotifyGameStart(rogue.seed);
                 }
@@ -873,6 +867,9 @@ void mainBrogueJunction() {
 
                 if (openFile(path)) {
                     if (loadSavedGame()) {
+                        if (!rogue.playbackMode) {
+                            androidNotifyGameStart(rogue.seed);
+                        }
                         mainInputLoop();
                     }
                     freeEverything();

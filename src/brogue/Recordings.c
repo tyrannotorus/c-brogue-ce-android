@@ -1186,21 +1186,30 @@ void saveGameNoPrompt() {
     rogue.recording = false;
 }
 
-// Fixed single-slot save for mobile. Saves to ANDROID_SAVE_NAME.broguesave
-// with no filename prompt, then ends the game.
-void androidSaveGameAndExit(void) {
-    char filePath[BROGUE_FILENAME_MAX];
-    if (rogue.playbackMode) {
-        return;
-    }
-    snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+static void copyFile(char *fromFilePath, char *toFilePath, unsigned long fromFileLength);
+
+// Writes the current recording to ANDROID_SAVE_NAME.broguesave via a
+// temp-then-rename so a kill mid-write can't corrupt the existing save.
+void androidWriteSaveFile(void) {
+    if (rogue.playbackMode) return;
+
+    char finalPath[BROGUE_FILENAME_MAX], tmpPath[BROGUE_FILENAME_MAX];
+    snprintf(finalPath, sizeof(finalPath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
+    snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", finalPath);
+
     flushBufferToFile();
-    remove(filePath); // Remove any previous save at this path.
-    rename(currentFilePath, filePath);
-    strcpy(currentFilePath, filePath);
+    // lengthOfPlaybackFile is the on-disk size; recordingLocation excludes the header.
+    copyFile(currentFilePath, tmpPath, lengthOfPlaybackFile);
+    remove(finalPath);
+    rename(tmpPath, finalPath);
+}
+
+void androidSaveGameAndExit(void) {
+    if (rogue.playbackMode) return;
+    androidWriteSaveFile();
     rogue.gameHasEnded = true;
     rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
-    rogue.nextGame = NG_QUIT; // Exit the app, don't return to title screen.
+    rogue.nextGame = NG_QUIT;
     rogue.recording = false;
 }
 

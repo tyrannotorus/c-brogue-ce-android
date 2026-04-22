@@ -1,10 +1,10 @@
 package org.broguece.game;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.provider.Settings;
 
 import org.json.JSONObject;
 
@@ -14,7 +14,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -29,12 +28,6 @@ final class BrogueApi {
     // .env.production (assembleRelease). See BuildConfig.API_BASE_URL and
     // the `buildTypes` block in app/build.gradle.kts.
     private static final String BASE_URL = BuildConfig.API_BASE_URL;
-
-    // String literal kept as-is (not "brogue_install") so existing installs
-    // don't lose their install_uuid on update — SharedPreferences are
-    // keyed by this file name.
-    private static final String PREFS_INSTALL    = "brogue_telemetry";
-    private static final String KEY_INSTALL_UUID = "install_uuid";
 
     private static final int CONNECT_TIMEOUT_MS     = 5000;
     private static final int WRITE_READ_TIMEOUT_MS  = 5000;
@@ -54,20 +47,14 @@ final class BrogueApi {
         return executor;
     }
 
-    // ---- Install identity ----
+    // ---- Device identity ----
 
-    String installId() {
-        SharedPreferences prefs = prefs();
-        String id = prefs.getString(KEY_INSTALL_UUID, null);
-        if (id == null) {
-            id = UUID.randomUUID().toString();
-            prefs.edit().putString(KEY_INSTALL_UUID, id).apply();
-        }
-        return id;
-    }
-
-    private SharedPreferences prefs() {
-        return activity.getSharedPreferences(PREFS_INSTALL, Context.MODE_PRIVATE);
+    String deviceId() {
+        android.content.ContentResolver cr = activity.getContentResolver();
+        String a = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID);
+        if (a == null) return null;
+        String b = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID);
+        return a.equals(b) ? a : null;
     }
 
     /** True when the device reports an active network with INTERNET capability.
@@ -101,9 +88,11 @@ final class BrogueApi {
     // ---- High-level telemetry calls ----
 
     void gameStart(long seed) {
+        String did = deviceId();
+        if (did == null) return;
         try {
             JSONObject body = new JSONObject();
-            body.put("installId", installId());
+            body.put("installId", did);
             // Seed goes as a string: Brogue seeds are int64 and JSON Number
             // loses integer precision above 2^53 when Node.js parses it.
             body.put("seed", String.valueOf(seed));
@@ -138,7 +127,6 @@ final class BrogueApi {
                 }
                 conn.getResponseCode();
             } catch (Exception ignored) {
-                // Swallow: graceful-failure contract.
             } finally {
                 if (conn != null) conn.disconnect();
             }
