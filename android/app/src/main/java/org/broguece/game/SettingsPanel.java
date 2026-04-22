@@ -21,7 +21,7 @@ import android.widget.Toast;
 /** In-game Settings panel — bottom-right card launched from the hamburger
  *  submenu. Toggles mirror C-side state by sending the corresponding keystroke
  *  (e.g. '\\' for hide color effects) so the engine and SharedPreferences stay
- *  in sync. Also exposes telemetry controls and seed copy. */
+ *  in sync. Also exposes seed copy. */
 final class SettingsPanel {
 
     private static final String[] GRAPHICS_MODE_LABELS = {
@@ -88,12 +88,6 @@ final class SettingsPanel {
         addGameToggle(panel, "Hide Color Effects", "hide_color_effects", '\\');
         addGameToggle(panel, "Display Stealth Range", "display_stealth_range", ']');
         addGraphicsModeCycler(panel);
-
-        addSeparator(panel);
-
-        // Privacy / telemetry section
-        addPrefToggleRow(panel, "Send Anonymous Usage Data",
-            activity.api.telemetryPrefsName(), activity.api.telemetryPrefsKey(), true);
 
         addSeparator(panel);
 
@@ -282,28 +276,6 @@ final class SettingsPanel {
             GameSettings.setInt(activity, "graphics_mode", currentMode[0]);
             labelView.setText(GRAPHICS_MODE_LABELS[currentMode[0]]);
             KeyInput.sendChar(activity, 'G');
-        });
-    }
-
-    /** Toggle tied purely to a SharedPreferences key; the engine is not
-     *  notified. Used for Java-only switches like the telemetry opt-out. */
-    private void addPrefToggleRow(LinearLayout panel, String label,
-                                   String prefsName, String key, boolean defaultValue) {
-        LinearLayout row = addRow(panel, label);
-
-        boolean on = activity.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE)
-            .getBoolean(key, defaultValue);
-
-        TextView check = makeCheckIndicator(on);
-        row.addView(check, new LinearLayout.LayoutParams(
-            activity.dpToPx(28), activity.dpToPx(28)));
-
-        row.setOnClickListener(v -> {
-            boolean nowOn = !activity.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE)
-                .getBoolean(key, defaultValue);
-            activity.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE)
-                .edit().putBoolean(key, nowOn).apply();
-            updateCheckIndicator(check, nowOn);
         });
     }
 

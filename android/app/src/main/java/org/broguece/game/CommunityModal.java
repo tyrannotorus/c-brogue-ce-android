@@ -123,15 +123,11 @@ final class CommunityModal {
 
         LinearLayout panel = ModalChrome.buildPanel(activity, root, "COMMUNITY");
 
-        // Your Stats — button that opens PlayerStatsModal. Hidden when
-        // telemetry is off, since the installId is what the server would key
-        // the stats on.
-        if (activity.api.telemetryEnabled()) {
-            addSectionHeader(panel, "Personal Stats",
-                "See how your runs have fared.", null);
-            StartMenu.addButton(panel, "View Stats", true,
-                v -> activity.playerStatsModal.show());
-        }
+        // Your Stats — local-only, stored in the app's private files dir.
+        addSectionHeader(panel, "Personal Stats",
+            "See how your runs have fared.", null);
+        StartMenu.addButton(panel, "View Stats", true,
+            v -> activity.playerStatsModal.show());
 
         // Weekly Contest section — dynamic, state-managed.
         addSectionHeader(panel,
@@ -294,8 +290,7 @@ final class CommunityModal {
     }
 
     /** Fetch /seeds. Success updates the cache and repaints the two sections;
-     *  any failure paints "No Network Connection" / "Server Unavailable". Not
-     *  gated by the telemetry toggle — /seeds sends no identifying info. */
+     *  any failure paints "No Network Connection" / "Server Unavailable". */
     private void fetchSeeds(boolean fromPullToRefresh) {
         if (seedsFetchInFlight) {
             if (fromPullToRefresh && swipe != null) {

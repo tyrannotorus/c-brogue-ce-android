@@ -30,9 +30,11 @@ final class BrogueApi {
     // the `buildTypes` block in app/build.gradle.kts.
     private static final String BASE_URL = BuildConfig.API_BASE_URL;
 
-    private static final String PREFS_TELEMETRY       = "brogue_telemetry";
-    private static final String KEY_INSTALL_UUID      = "install_uuid";
-    private static final String KEY_TELEMETRY_ENABLED = "telemetry_enabled";
+    // String literal kept as-is (not "brogue_install") so existing installs
+    // don't lose their install_uuid on update — SharedPreferences are
+    // keyed by this file name.
+    private static final String PREFS_INSTALL    = "brogue_telemetry";
+    private static final String KEY_INSTALL_UUID = "install_uuid";
 
     private static final int CONNECT_TIMEOUT_MS     = 5000;
     private static final int WRITE_READ_TIMEOUT_MS  = 5000;
@@ -52,7 +54,7 @@ final class BrogueApi {
         return executor;
     }
 
-    // ---- Install identity / toggle ----
+    // ---- Install identity ----
 
     String installId() {
         SharedPreferences prefs = prefs();
@@ -64,19 +66,8 @@ final class BrogueApi {
         return id;
     }
 
-boolean telemetryEnabled() {
-        return prefs().getBoolean(KEY_TELEMETRY_ENABLED, true);
-    }
-
-    void setTelemetryEnabled(boolean on) {
-        prefs().edit().putBoolean(KEY_TELEMETRY_ENABLED, on).apply();
-    }
-
-    String telemetryPrefsName()   { return PREFS_TELEMETRY; }
-    String telemetryPrefsKey()    { return KEY_TELEMETRY_ENABLED; }
-
     private SharedPreferences prefs() {
-        return activity.getSharedPreferences(PREFS_TELEMETRY, Context.MODE_PRIVATE);
+        return activity.getSharedPreferences(PREFS_INSTALL, Context.MODE_PRIVATE);
     }
 
     /** True when the device reports an active network with INTERNET capability.
@@ -110,7 +101,6 @@ boolean telemetryEnabled() {
     // ---- High-level telemetry calls ----
 
     void gameStart(long seed) {
-        if (!telemetryEnabled()) return;
         try {
             JSONObject body = new JSONObject();
             body.put("installId", installId());
