@@ -11,17 +11,28 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Local-only numeric seed entry. Does not hit the server and does not send
- *  telemetry — plays are not tagged with a recognised source. */
+/** Numeric seed entry. Once the player taps Play, the native start path
+ *  fires and BrogueActivity.onGameStart handles telemetry + local stats. */
 final class CustomSeedModal {
 
     private final BrogueActivity activity;
+    /** 0 means "empty input"; positive values pre-populate the seed field.
+     *  Reset on each show() so a previous prefill doesn't leak into a later
+     *  fresh-open. */
+    private long prefilledSeed;
 
     CustomSeedModal(BrogueActivity activity) {
         this.activity = activity;
     }
 
     void show() {
+        show(0);
+    }
+
+    /** Opens the modal with the seed field pre-populated — used by the
+     *  "Recent Seeds" list on the Personal Stats modal. */
+    void show(long prefill) {
+        this.prefilledSeed = prefill;
         activity.modalStack.push(this::buildOverlay);
     }
 
@@ -69,6 +80,9 @@ final class CustomSeedModal {
             if (seed <= 0) return;
             activity.modalStack.clear();
             activity.startMenu.dismiss();
+            // Telemetry and local stats both fire from
+            // BrogueActivity.onGameStart once the engine reports the run
+            // has started.
             activity.nativeStartMenuResultWithSeed(StartMenu.CHOICE_PLAY_SEED, seed);
         };
         input.addTextChangedListener(new android.text.TextWatcher() {
@@ -79,6 +93,14 @@ final class CustomSeedModal {
                 StartMenu.setButtonEnabled(playBtn, valid, valid ? playListener : null);
             }
         });
+
+        // Pre-populate after the TextWatcher is registered so the Play button
+        // auto-enables via afterTextChanged.
+        if (prefilledSeed > 0) {
+            input.setText(String.valueOf(prefilledSeed));
+            input.setSelection(input.getText().length());
+        }
+
         StartMenu.addButton(panel, "Back", true, v -> activity.modalStack.pop());
 
         ModalChrome.present(activity, root, panel);

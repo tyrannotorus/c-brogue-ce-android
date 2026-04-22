@@ -15,12 +15,12 @@
 #include <jni.h>
 #include "android-stats.h"
 
-void androidNotifyGameStart(void) {
+void androidNotifyGameStart(unsigned long long seed) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
-    jmethodID mid = (*env)->GetMethodID(env, cls, "onGameStart", "()V");
-    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onGameStart", "(J)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jlong)seed);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
 }
@@ -45,6 +45,21 @@ void androidNotifyAllyFreed(const char *monsterName) {
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
     jmethodID mid = (*env)->GetMethodID(env, cls, "onAllyFreed",
+                                        "(Ljava/lang/String;)V");
+    if (mid) {
+        jstring jname = (*env)->NewStringUTF(env, monsterName ? monsterName : "");
+        (*env)->CallVoidMethod(env, activity, mid, jname);
+        (*env)->DeleteLocalRef(env, jname);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+void androidNotifyAllyDied(const char *monsterName) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onAllyDied",
                                         "(Ljava/lang/String;)V");
     if (mid) {
         jstring jname = (*env)->NewStringUTF(env, monsterName ? monsterName : "");
@@ -86,6 +101,16 @@ void androidNotifyPlayerQuit(void) {
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
     jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerQuit", "()V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+void androidNotifyAmuletPickedUp(void) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onAmuletPickedUp", "()V");
     if (mid) (*env)->CallVoidMethod(env, activity, mid);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);

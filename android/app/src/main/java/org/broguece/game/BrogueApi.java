@@ -25,9 +25,9 @@ import java.util.function.Consumer;
  *  null on any failure and leave UI presentation entirely up to the caller. */
 final class BrogueApi {
 
-    // Injected at build time from .env.staging (assembleStaging) or .env.prod
-    // (assembleRelease). See BuildConfig.API_BASE_URL and the `buildTypes`
-    // block in app/build.gradle.kts.
+    // Injected at build time from .env.staging (assembleStaging) or
+    // .env.production (assembleRelease). See BuildConfig.API_BASE_URL and
+    // the `buildTypes` block in app/build.gradle.kts.
     private static final String BASE_URL = BuildConfig.API_BASE_URL;
 
     private static final String PREFS_TELEMETRY       = "brogue_telemetry";
@@ -64,11 +64,7 @@ final class BrogueApi {
         return id;
     }
 
-    void clearInstallId() {
-        prefs().edit().remove(KEY_INSTALL_UUID).apply();
-    }
-
-    boolean telemetryEnabled() {
+boolean telemetryEnabled() {
         return prefs().getBoolean(KEY_TELEMETRY_ENABLED, true);
     }
 
@@ -113,39 +109,20 @@ final class BrogueApi {
 
     // ---- High-level telemetry calls ----
 
-    void sessionStart() {
+    void gameStart(long seed) {
         if (!telemetryEnabled()) return;
         try {
             JSONObject body = new JSONObject();
             body.put("installId", installId());
-            body.put("appVersion", appVersionString());
-            body.put("os", "android-" + android.os.Build.VERSION.RELEASE);
-            postFireAndForget("/session/start", body);
-        } catch (Exception ignored) { }
-    }
-
-    void gameStart(long seed, String source) {
-        if (!telemetryEnabled()) return;
-        try {
-            JSONObject body = new JSONObject();
-            body.put("installId", installId());
-            body.put("seed", seed);
-            body.put("source", source);
+            // Seed goes as a string: Brogue seeds are int64 and JSON Number
+            // loses integer precision above 2^53 when Node.js parses it.
+            body.put("seed", String.valueOf(seed));
             body.put("appVersion", appVersionString());
             postFireAndForget("/game/start", body);
         } catch (Exception ignored) { }
     }
 
-    /** Not gated by the toggle — the user is opting out by requesting deletion. */
-    void forgetInstall() {
-        try {
-            JSONObject body = new JSONObject();
-            body.put("installId", installId());
-            postFireAndForget("/install/forget", body);
-        } catch (Exception ignored) { }
-    }
-
-    /** Fetches the combined seeds payload. Callback runs on the UI thread with
+/** Fetches the combined seeds payload. Callback runs on the UI thread with
      *  null for any failure. */
     void fetchSeeds(Consumer<JSONObject> onResult) {
         getJson("/seeds", JSONObject::new, onResult);

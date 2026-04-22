@@ -35,6 +35,8 @@ final class CommunityModal {
 
     private boolean seedsFetchedThisSession;
     private long cachedWeeklySeed;                     // 0 = unknown
+    private String cachedWeeklyDescription;            // null = unknown
+    private Stats cachedWeeklyStats;                   // null = unknown
     private java.util.List<FunSeedRow> cachedFunSeeds; // null = unknown
     private boolean seedsFetchInFlight;
 
@@ -54,17 +56,41 @@ final class CommunityModal {
     void clearCache() {
         seedsFetchedThisSession = false;
         cachedWeeklySeed = 0;
+        cachedWeeklyDescription = null;
+        cachedWeeklyStats = null;
         cachedFunSeeds = null;
     }
 
     // ---- Data classes ----
 
+    /** Per-seed counters returned by the server. The detail modal renders
+     *  plays/deaths/wins; quits is parsed for forward compat but not shown. */
+    private static final class Stats {
+        final int plays, wins, deaths;
+        Stats(int plays, int wins, int deaths) {
+            this.plays = plays;
+            this.wins = wins;
+            this.deaths = deaths;
+        }
+        static Stats fromJson(JSONObject obj) {
+            return new Stats(
+                obj.optInt("plays", 0),
+                obj.optInt("wins", 0),
+                obj.optInt("deaths", 0));
+        }
+        static Stats zero() {
+            return new Stats(0, 0, 0);
+        }
+    }
+
     private static final class FunSeedRow {
         final long seed;
         final String description;
-        FunSeedRow(long seed, String description) {
+        final Stats stats;
+        FunSeedRow(long seed, String description, Stats stats) {
             this.seed = seed;
             this.description = description;
+            this.stats = stats;
         }
     }
 
@@ -73,15 +99,16 @@ final class CommunityModal {
         final String title;
         final String description;
         final String url;
-        final String source;
+        final String headerLabel; // null => show seed number as the header
         final int plays, deaths, wins;
         SeedDetail(long seed, String title, String description, String url,
-                   String source, int plays, int deaths, int wins) {
+                   String headerLabel,
+                   int plays, int deaths, int wins) {
             this.seed = seed;
             this.title = title;
             this.description = description;
             this.url = url;
-            this.source = source;
+            this.headerLabel = headerLabel;
             this.plays = plays;
             this.deaths = deaths;
             this.wins = wins;
@@ -100,9 +127,9 @@ final class CommunityModal {
         // telemetry is off, since the installId is what the server would key
         // the stats on.
         if (activity.api.telemetryEnabled()) {
-            addSectionHeader(panel, "Your Stats",
+            addSectionHeader(panel, "Personal Stats",
                 "See how your runs have fared.", null);
-            StartMenu.addButton(panel, "View Your Stats", true,
+            StartMenu.addButton(panel, "View Stats", true,
                 v -> activity.playerStatsModal.show());
         }
 
@@ -121,8 +148,8 @@ final class CommunityModal {
         // Fun Seeds section — fixed height reserved for up to 10 rows so the
         // layout doesn't jump between loading, error, and data states.
         addSectionHeader(panel,
-            "Play Fun seeds",
-            "Brogue Fan-submitted seeds",
+            "Fan-submitted Seeds",
+            "Fun seeds posted to r/brogueforum",
             null);
         funState = new FrameLayout(activity);
         funState.setMinimumHeight(activity.dpToPx(FUN_ROW_HEIGHT_DP * FUN_ROWS_MAX));
@@ -131,7 +158,7 @@ final class CommunityModal {
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
         if (seedsFetchedThisSession) {
-            renderWeeklyData(cachedWeeklySeed);
+            renderWeeklyData(cachedWeeklySeed, cachedWeeklyDescription, cachedWeeklyStats);
             renderFunData(cachedFunSeeds);
         } else {
             renderWeeklyLoading();
@@ -214,9 +241,12 @@ final class CommunityModal {
         weeklyState.addView(makeStateMessage(message));
     }
 
-    private void renderWeeklyData(long weekly) {
+    private void renderWeeklyData(long weekly, String description, Stats stats) {
         if (weeklyState == null) return;
         weeklyState.removeAllViews();
+        final Stats safe = stats != null ? stats : Stats.zero();
+        final String safeDescription = description != null && !description.isEmpty()
+            ? description : String.valueOf(weekly);
         LinearLayout container = new LinearLayout(activity);
         container.setOrientation(LinearLayout.VERTICAL);
         StartMenu.addButton(container, "Play Weekly Contest", true, v -> {
@@ -224,7 +254,8 @@ final class CommunityModal {
                 "Weekly Contest",
                 "Follow the contest at r/brogueforum",
                 "https://www.reddit.com/r/brogueforum/",
-                "weekly", 127, 112, 15);
+                safeDescription,
+                safe.plays, safe.deaths, safe.wins);
             activity.modalStack.push(() -> buildSeedDetailOverlay(d));
         });
         weeklyState.addView(container, new FrameLayout.LayoutParams(
@@ -251,22 +282,10 @@ final class CommunityModal {
         list.setOrientation(LinearLayout.VERTICAL);
         if (rows != null) {
             int count = Math.min(rows.size(), FUN_ROWS_MAX);
-            int[][] fakeStats = {
-                {   47,   42,   5 },
-                {  318,  280,  38 },
-                {    8,    7,   1 },
-                { 1204, 1071, 133 },
-                {   62,   55,   7 },
-                {   19,   16,   3 },
-                {  446,  401,  45 },
-                {   93,   84,   9 },
-                {    3,    3,   0 },
-                {  221,  194,  27 },
-            };
             for (int i = 0; i < count; i++) {
                 FunSeedRow r = rows.get(i);
-                int[] s = fakeStats[i % fakeStats.length];
-                addFunSeedRow(list, r.seed, r.description, s[0], s[1], s[2]);
+                addFunSeedRow(list, r.seed, r.description,
+                    r.stats.plays, r.stats.deaths, r.stats.wins);
             }
         }
         funState.addView(list, new FrameLayout.LayoutParams(
@@ -315,15 +334,25 @@ final class CommunityModal {
             }
 
             long weekly;
+            String weeklyDescription;
+            Stats weeklyStats;
             java.util.List<FunSeedRow> fun;
             try {
-                weekly = obj.getJSONObject("weekly").getLong("seed");
+                // Server sends seeds as strings to preserve int64 precision —
+                // see BrogueApi#gameStart for the full rationale. `stats` is
+                // always present on every seed (zeros when no plays).
+                JSONObject weeklyObj = obj.getJSONObject("weekly");
+                weekly = Long.parseLong(weeklyObj.getString("seed"));
+                weeklyDescription = weeklyObj.optString("description", "");
+                weeklyStats = Stats.fromJson(weeklyObj.getJSONObject("stats"));
                 JSONArray funArr = obj.getJSONArray("fun");
                 fun = new java.util.ArrayList<>(funArr.length());
                 for (int i = 0; i < funArr.length(); i++) {
                     JSONObject r = funArr.getJSONObject(i);
-                    fun.add(new FunSeedRow(r.getLong("seed"),
-                                            r.optString("description", "")));
+                    fun.add(new FunSeedRow(
+                        Long.parseLong(r.getString("seed")),
+                        r.optString("description", ""),
+                        Stats.fromJson(r.getJSONObject("stats"))));
                 }
             } catch (Exception e) {
                 if (modalStillOpen) {
@@ -334,11 +363,13 @@ final class CommunityModal {
             }
 
             cachedWeeklySeed = weekly;
+            cachedWeeklyDescription = weeklyDescription;
+            cachedWeeklyStats = weeklyStats;
             cachedFunSeeds = fun;
             seedsFetchedThisSession = true;
 
             if (modalStillOpen) {
-                renderWeeklyData(weekly);
+                renderWeeklyData(weekly, weeklyDescription, weeklyStats);
                 renderFunData(fun);
             }
         });
@@ -407,7 +438,7 @@ final class CommunityModal {
 
         row.setOnClickListener(v -> {
             SeedDetail d = new SeedDetail(seed, "Fun Seed", description, null,
-                "fun", plays, deaths, wins);
+                null, plays, deaths, wins);
             activity.modalStack.push(() -> buildSeedDetailOverlay(d));
         });
 
@@ -425,7 +456,7 @@ final class CommunityModal {
         LinearLayout panel = ModalChrome.buildPanel(activity, root, d.title.toUpperCase());
 
         TextView seedView = new TextView(activity);
-        seedView.setText(String.valueOf(d.seed));
+        seedView.setText(d.headerLabel != null ? d.headerLabel : String.valueOf(d.seed));
         seedView.setTextColor(Palette.GHOST_WHITE);
         seedView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         seedView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -461,7 +492,9 @@ final class CommunityModal {
         StartMenu.addButton(panel, "Play", true, v -> {
             activity.modalStack.clear();
             activity.startMenu.dismiss();
-            activity.api.gameStart(d.seed, d.source);
+            // Telemetry and local stats both fire from
+            // BrogueActivity.onGameStart once the engine reports the run
+            // has started. No per-modal duplication.
             activity.nativeStartMenuResultWithSeed(StartMenu.CHOICE_PLAY_SEED, d.seed);
         });
         StartMenu.addButton(panel, "Back", true, v -> activity.modalStack.pop());

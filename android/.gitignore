@@ -10,4 +10,4 @@ keystore.properties
 # Per-environment secrets — templates (.env.*.template) are tracked, real
 # values are not. See app/build.gradle.kts for how these are consumed.
 .env.staging
-.env.prod
+.env.production

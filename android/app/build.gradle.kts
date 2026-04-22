@@ -42,7 +42,7 @@ val keystoreProperties = Properties().apply {
 
 // Reads a single KEY=value from a gitignored .env file at the Android
 // project root. Fails the build if the file or the key is missing — the
-// templates (.env.staging.template, .env.prod.template) advertise what's
+// templates (.env.staging.template, .env.production.template) advertise what's
 // expected; a missing value must never silently fall back to empty so the
 // staging URL can't slip into a release build.
 fun envValue(envFile: String, key: String): String {
@@ -123,7 +123,7 @@ android {
 
     // Two and only two variants:
     //   assembleStaging → debuggable, reads .env.staging
-    //   assembleRelease → production,  reads .env.prod
+    //   assembleRelease → production,  reads .env.production
     // The default `debug` variant is filtered out below so it can't be built
     // or shipped without an .env injected.
     buildTypes {
@@ -146,7 +146,7 @@ android {
                 ?: signingConfigs.getByName("debug")
             buildConfigField(
                 "String", "API_BASE_URL",
-                "\"${envValue(".env.prod", "API_BASE_URL")}\""
+                "\"${envValue(".env.production", "API_BASE_URL")}\""
             )
         }
     }

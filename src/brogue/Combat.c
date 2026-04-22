@@ -1741,12 +1741,20 @@ void killCreature(creature *decedent, boolean administrativeDeath) {
         checkForContinuedLeadership(decedent->leader);
     }
 
-    // Android stats: fire-and-forget monster-kill event. Skip administrative
+    // Android stats: fire-and-forget lifecycle event. Skip administrative
     // deaths (unspawning, phoenix-prevention, etc. — not "real" kills), the
     // player itself (handled by gameOver), and anything during playback/save
-    // replay (rogue.playbackMode covers both).
+    // replay (rogue.playbackMode covers both). Route ally deaths to a
+    // separate hook so the Android UI can show "Allies Lost" distinctly
+    // from player kills — otherwise a fallen companion would pollute the
+    // Monsters Slain tally.
     if (!administrativeDeath && decedent != &player && !rogue.playbackMode) {
-        androidNotifyMonsterKilled(monsterCatalog[decedent->info.monsterID].monsterName);
+        const char *name = monsterCatalog[decedent->info.monsterID].monsterName;
+        if (decedent->creatureState == MONSTER_ALLY) {
+            androidNotifyAllyDied(name);
+        } else {
+            androidNotifyMonsterKilled(name);
+        }
     }
 }
 

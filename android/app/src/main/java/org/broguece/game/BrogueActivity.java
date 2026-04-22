@@ -39,6 +39,7 @@ public class BrogueActivity extends SDLActivity {
     private ActionsToolbar actionsToolbar;
     private InventoryOverlay inventoryRenderer;
     private TextInputDialog textInputDialog;
+    private AchievementToast achievementToast;
 
     @Override
     protected String[] getLibraries() {
@@ -78,8 +79,11 @@ public class BrogueActivity extends SDLActivity {
         bottomParams.setMargins(0, 0, dpToPx(EDGE_SAFE_DP), 0);
         gameOverlay.addView(bottomGroup, bottomParams);
 
-        // Heartbeat — fire-and-forget, silent on failure. Must never block boot.
-        api.sessionStart();
+        achievementToast = new AchievementToast(this, gameOverlay);
+        // Listener fires on the StatsStore handler thread; marshal to UI.
+        StatsStore.get(this).setUnlockListener(
+            a -> runOnUiThread(() -> achievementToast.show(a)));
+
     }
 
     // ---- JNI entry points -------------------------------------------------
@@ -109,8 +113,10 @@ public class BrogueActivity extends SDLActivity {
     // background HandlerThread so we return fast and don't perturb the game
     // loop. Call sites in C already guard !rogue.playbackMode, so save-load
     // and recording playback don't re-dispatch historical events.
-    public void onGameStart() {
+    public void onGameStart(long seed) {
         StatsStore.get(this).recordGameStart();
+        StatsStore.get(this).recordSeedPlayed(seed);
+        api.gameStart(seed);
     }
 
     public void onMonsterKilled(final String monsterName) {
@@ -121,12 +127,20 @@ public class BrogueActivity extends SDLActivity {
         StatsStore.get(this).recordAllyFreed(monsterName);
     }
 
+    public void onAllyDied(final String monsterName) {
+        StatsStore.get(this).recordAllyDied(monsterName);
+    }
+
+    public void onAmuletPickedUp() {
+        StatsStore.get(this).recordAmuletPickedUp();
+    }
+
     public void onPlayerDied(final String killedBy, final int depth, final int turns) {
         StatsStore.get(this).recordPlayerDied(killedBy, depth, turns);
     }
 
     public void onPlayerWon(final boolean superVictory, final int depth, final int turns) {
-        StatsStore.get(this).recordPlayerWon(depth, turns);
+        StatsStore.get(this).recordPlayerWon(superVictory, depth, turns);
     }
 
     public void onPlayerQuit() {

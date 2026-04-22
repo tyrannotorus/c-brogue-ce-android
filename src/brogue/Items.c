@@ -27,6 +27,7 @@
 #include "Globals.h"
 #include "platform.h"
 #include "android-touch.h"
+#include "android-stats.h"
 
 #define MAGIC_POLARITY_BENEVOLENT 1
 #define MAGIC_POLARITY_MALEVOLENT -1
@@ -904,6 +905,13 @@ void pickUpItemAt(pos loc) {
 
         if ((theItem->category & AMULET)
             && !(rogue.yendorWarden)) {
+            // Fire a one-shot "Amulet picked up" event to the Android stats
+            // layer. Gated on !yendorWarden so drop-and-re-pickup doesn't
+            // double-fire, and on !playbackMode so save-replay doesn't count
+            // historical pickups.
+            if (!rogue.playbackMode) {
+                androidNotifyAmuletPickedUp();
+            }
             // Identify the amulet guardian, or generate one if there isn't one.
             for (creatureIterator it = iterateCreatures(monsters); hasNextCreature(it);) {
                 creature *monst = nextCreature(&it);

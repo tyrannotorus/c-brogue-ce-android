@@ -1,6 +1,5 @@
 package org.broguece.game;
 
-import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.res.ColorStateList;
@@ -95,20 +94,6 @@ final class SettingsPanel {
         // Privacy / telemetry section
         addPrefToggleRow(panel, "Send Anonymous Usage Data",
             activity.api.telemetryPrefsName(), activity.api.telemetryPrefsKey(), true);
-        addAction(activity, panel, "Delete My Data", v ->
-            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
-                .setTitle("Delete My Data")
-                .setMessage("This erases your anonymous play history from the server.\n\nYour current install ID will be replaced. This cannot be undone.")
-                .setPositiveButton("Delete", (d, w) -> {
-                    activity.api.forgetInstall();
-                    activity.api.clearInstallId();
-                    activity.communityModal.clearCache();
-                    Toast.makeText(activity,
-                        "Data deletion requested", Toast.LENGTH_SHORT).show();
-                    hide();
-                })
-                .setNegativeButton("Cancel", null)
-                .show());
 
         addSeparator(panel);
 

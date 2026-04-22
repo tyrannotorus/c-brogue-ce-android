@@ -535,6 +535,14 @@ void freeCaptive(creature *monst) {
     monsterName(monstName, monst, false);
     sprintf(buf, "you free the grateful %s and gain a faithful ally.", monstName);
     message(buf, 0);
+
+    // Catalog name (not monsterName()'s display variant — that returns
+    // "something" in the dark and randomizes under hallucination, which is
+    // wrong for a tally). Guarded by !rogue.playbackMode so recording
+    // replay doesn't re-fire historical events.
+    if (!rogue.playbackMode) {
+        androidNotifyAllyFreed(monsterCatalog[monst->info.monsterID].monsterName);
+    }
 }
 
 boolean freeCaptivesEmbeddedAt(short x, short y) {
