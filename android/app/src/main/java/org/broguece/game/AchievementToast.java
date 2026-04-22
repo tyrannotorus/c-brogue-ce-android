@@ -58,13 +58,17 @@ final class AchievementToast {
         int padV = activity.dpToPx(12);
         panel.setPadding(padH, padV, padH, padV);
 
+        LinearLayout.LayoutParams fill = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+
         TextView header = new TextView(activity);
         header.setText("ACHIEVEMENT UNLOCKED");
         header.setTextColor(Palette.FLAME_EMBER);
         header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         header.setLetterSpacing(0.2f);
-        panel.addView(header);
+        panel.addView(header, fill);
 
         TextView title = new TextView(activity);
         title.setText(a.title);
@@ -72,7 +76,7 @@ final class AchievementToast {
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
         titleLp.topMargin = activity.dpToPx(2);
         panel.addView(title, titleLp);
@@ -82,10 +86,18 @@ final class AchievementToast {
         desc.setTextColor(Palette.PALE_BLUE);
         desc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         desc.setTypeface(Typeface.MONOSPACE);
-        panel.addView(desc);
+        panel.addView(desc, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        // Pin a readable max width so long descriptions wrap inside the
+        // panel instead of overflowing on one line. Mirrors ModalChrome's
+        // 85%-of-screen cap.
+        int panelWidth = Math.min(
+            activity.dpToPx(320),
+            (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.85f));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
+            panelWidth,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         lp.topMargin = activity.dpToPx(24);
