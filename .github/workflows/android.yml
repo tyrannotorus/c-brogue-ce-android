@@ -73,14 +73,6 @@ jobs:
         working-directory: android
         run: echo "API_BASE_URL=${{ secrets.API_BASE_URL_PRODUCTION }}" > .env.production
 
-      # Placeholder — Gradle evaluates the staging buildType's `envValue`
-      # call during configuration even though we only assembleRelease.
-      # Staging APKs are built via Forgejo, never here; this value never
-      # reaches a shipped binary.
-      - name: Create placeholder .env.staging
-        working-directory: android
-        run: echo "API_BASE_URL=unused-on-github-ci" > .env.staging
-
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease

@@ -132,10 +132,15 @@ android {
             isDebuggable = true
             isJniDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
-            buildConfigField(
-                "String", "API_BASE_URL",
-                "\"${envValue(".env.staging", "API_BASE_URL")}\""
-            )
+            // Read .env.staging when present; fall back to an empty URL
+            // when missing. The variant is disabled further down in that
+            // case (see `beforeVariants`), so this value never lands in a
+            // shipped APK — it exists only because AGP evaluates the
+            // buildType block eagerly during configuration.
+            val stagingUrl = if (rootProject.file(".env.staging").exists())
+                envValue(".env.staging", "API_BASE_URL")
+            else ""
+            buildConfigField("String", "API_BASE_URL", "\"$stagingUrl\"")
             // Library modules don't define our `staging` type — fall back to
             // their `debug` when Gradle resolves dependency variants.
             matchingFallbacks += listOf("debug")
@@ -168,9 +173,20 @@ android {
 // it bought into: a plain `assembleDebug` would ship without any .env injected
 // at all. Forcing the choice between Staging and Release keeps the IP-leak
 // guard rail honest.
+//
+// Also disable the `staging` variant when `.env.staging` is absent (the
+// GitHub release CI only ships .env.production). This avoids forcing CI
+// to fabricate a placeholder `.env.staging` just to satisfy configuration-
+// phase validation.
+val stagingEnvFile = rootProject.file(".env.staging")
 androidComponents {
     beforeVariants(selector().withBuildType("debug")) { variant ->
         variant.enable = false
+    }
+    if (!stagingEnvFile.exists()) {
+        beforeVariants(selector().withBuildType("staging")) { variant ->
+            variant.enable = false
+        }
     }
 }
 
@@ -178,6 +194,9 @@ androidComponents {
 // host never lives in tracked source. Release uses src/release/res/xml.
 androidComponents {
     onVariants(selector().withBuildType("staging")) { variant ->
+        // Skip when the staging variant is disabled (no .env.staging present).
+        if (!stagingEnvFile.exists()) return@onVariants
+
         val envUrl = envValue(".env.staging", "API_BASE_URL")
         val hostValue = URI(envUrl).host
             ?: throw GradleException("API_BASE_URL in .env.staging has no host component: $envUrl")
