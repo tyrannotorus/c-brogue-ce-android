@@ -168,6 +168,15 @@ static boolean pollBrogueEvent(rogueEvent *returnEvent, boolean textInput) {
             SDL_Quit();
             int statusCode = quitImmediately();
             exit(statusCode);
+        } else if (event.type == SDL_APP_WILLENTERBACKGROUND) {
+            // Android is about to pause us — snapshot the save so the user
+            // can resume even if the OS kills the process while backgrounded.
+            // Only snapshot when an active game is in progress; on the title
+            // screen there's nothing meaningful to write.
+            if (rogue.gameInProgress && !rogue.gameHasEnded) {
+                androidWriteSaveFile();
+            }
+            continue;
         } else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
             resizeWindow(event.window.data1, event.window.data2);
         } else if (event.type == SDL_KEYDOWN) {
