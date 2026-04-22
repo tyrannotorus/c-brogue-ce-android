@@ -62,6 +62,10 @@ jobs:
           echo "keyAlias=brogue" >> keystore.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
 
+      - name: Create .env.production
+        working-directory: android
+        run: echo "API_BASE_URL=${{ secrets.API_BASE_URL_PRODUCTION }}" > .env.production
+
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease

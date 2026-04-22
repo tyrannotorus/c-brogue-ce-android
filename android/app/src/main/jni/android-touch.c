@@ -168,6 +168,7 @@ Java_org_broguece_game_BrogueActivity_nativeGetSeed(
 #define START_MENU_PLAY_SEED 2
 
 extern volatile enum NGCommands startMenuChoice; // defined in MainMenu.c
+extern volatile boolean startMenuCancelled;      // defined in MainMenu.c
 
 void androidShowStartMenu(boolean hasSave, boolean saveCompatible) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
@@ -189,6 +190,36 @@ Java_org_broguece_game_BrogueActivity_nativeStartMenuResult(
         case START_MENU_PLAY_SEED: startMenuChoice = NG_NEW_GAME_WITH_SEED; break;
         default:                   startMenuChoice = NG_NEW_GAME; break;
     }
+}
+
+/*
+ * Same as nativeStartMenuResult but lets the caller supply a specific seed.
+ * When choice == START_MENU_PLAY_SEED and seed > 0, pre-populating
+ * rogue.nextGameSeed causes MainMenu.c to skip its in-engine seed prompt.
+ */
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeStartMenuResultWithSeed(
+        JNIEnv *env, jobject thiz, jint choice, jlong seed) {
+    if (choice == START_MENU_PLAY_SEED && seed > 0) {
+        rogue.nextGameSeed = (uint64_t)seed;
+    }
+    switch (choice) {
+        case START_MENU_NEW_GAME:  startMenuChoice = NG_NEW_GAME; break;
+        case START_MENU_RESUME:    startMenuChoice = NG_OPEN_GAME; break;
+        case START_MENU_PLAY_SEED: startMenuChoice = NG_NEW_GAME_WITH_SEED; break;
+        default:                   startMenuChoice = NG_NEW_GAME; break;
+    }
+}
+
+/*
+ * User tapped the start-menu backdrop. Signals the Phase 2 loop in
+ * titleMenu() to break out and re-enter Phase 1 (the "BROGUE" title flames).
+ */
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeStartMenuCancel(
+        JNIEnv *env, jobject thiz) {
+    (void)env; (void)thiz;
+    startMenuCancelled = true;
 }
 
 /* ---- Native text input dialog ---- */

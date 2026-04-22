@@ -28,6 +28,7 @@
 #include "GlobalsRapidBrogue.h"
 #include "GlobalsBulletBrogue.h"
 #include "platform.h"
+#include "android-stats.h"
 
 #include <time.h>
 
@@ -1202,8 +1203,10 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
     if (!rogue.playbackMode) {
         if (!rogue.quit) {
             notifyEvent(GAMEOVER_DEATH, theEntry.score, 0, theEntry.description, recordingFilename);
+            androidNotifyPlayerDied(killedBy, rogue.depthLevel, (int)rogue.playerTurnNumber);
         } else {
             notifyEvent(GAMEOVER_QUIT, theEntry.score, 0, theEntry.description, recordingFilename);
+            androidNotifyPlayerQuit();
         }
     } else {
         notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");
@@ -1367,6 +1370,7 @@ void victory(boolean superVictory) {
         } else {
             notifyEvent(GAMEOVER_VICTORY, theEntry.score, 0, theEntry.description, recordingFilename);
         }
+        androidNotifyPlayerWon(superVictory, rogue.depthLevel, (int)rogue.playerTurnNumber);
     } else {
         notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");
     }

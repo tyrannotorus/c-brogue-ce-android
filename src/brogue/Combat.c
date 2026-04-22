@@ -24,6 +24,7 @@
 #include "Rogue.h"
 #include "GlobalsBase.h"
 #include "Globals.h"
+#include "android-stats.h"
 
 
 /* Combat rules:
@@ -1738,6 +1739,22 @@ void killCreature(creature *decedent, boolean administrativeDeath) {
     demoteMonsterFromLeadership(decedent);
     if (decedent->leader) {
         checkForContinuedLeadership(decedent->leader);
+    }
+
+    // Android stats: fire-and-forget lifecycle event. Skip administrative
+    // deaths (unspawning, phoenix-prevention, etc. — not "real" kills), the
+    // player itself (handled by gameOver), and anything during playback/save
+    // replay (rogue.playbackMode covers both). Route ally deaths to a
+    // separate hook so the Android UI can show "Allies Lost" distinctly
+    // from player kills — otherwise a fallen companion would pollute the
+    // Monsters Slain tally.
+    if (!administrativeDeath && decedent != &player && !rogue.playbackMode) {
+        const char *name = monsterCatalog[decedent->info.monsterID].monsterName;
+        if (decedent->creatureState == MONSTER_ALLY) {
+            androidNotifyAllyDied(name);
+        } else {
+            androidNotifyMonsterKilled(name);
+        }
     }
 }
 

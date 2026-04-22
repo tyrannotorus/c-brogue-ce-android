@@ -18,3 +18,6 @@ BrogueCE-*
 *.gcov
 *.desktop
 gmon.out
+
+# Local-only dev tools
+.claude/

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release config: cleartext HTTP is forbidden everywhere. The backend is
+  HTTPS; no carve-outs are needed. Explicit rather than relying on the
+  platform default so a misconfigured dependency can't silently enable it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
