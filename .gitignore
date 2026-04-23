@@ -21,3 +21,4 @@ gmon.out
 
 # Local-only dev tools
 .claude/
+tools/test-fdroid-build.sh

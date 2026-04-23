@@ -1216,6 +1216,10 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
         saveRunHistory(rogue.quit ? "Quit" : "Died", rogue.quit ? "-" : killedBy, (int) theEntry.score, numGems);
     }
 
+    if (!rogue.playbackMode) {
+        androidDeleteSaveFile();
+    }
+
     exitModalMode();
     rogue.gameHasEnded = true;
     rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
@@ -1377,6 +1381,10 @@ void victory(boolean superVictory) {
 
     if (!rogue.playbackMode && rogue.mode != GAME_MODE_EASY && rogue.mode != GAME_MODE_NORMAL) {
         saveRunHistory(victoryVerb, "-", (int) theEntry.score, gemCount);
+    }
+
+    if (!rogue.playbackMode) {
+        androidDeleteSaveFile();
     }
 
     exitModalMode();

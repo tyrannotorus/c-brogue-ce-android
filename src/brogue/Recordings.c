@@ -1214,10 +1214,13 @@ void androidSaveGameAndExit(void) {
 }
 
 // Delete the fixed save file so the next launch starts a new game.
-void androidAbandonGame(void) {
+void androidDeleteSaveFile(void) {
     char filePath[BROGUE_FILENAME_MAX];
     snprintf(filePath, sizeof(filePath), "%s%s", ANDROID_SAVE_NAME, GAME_SUFFIX);
     remove(filePath);
+}
+
+void androidAbandonGame(void) {
     rogue.quit = true;
     gameOver("Quit", true);
 }

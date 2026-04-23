@@ -147,8 +147,7 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             buildConfigField(
                 "String", "API_BASE_URL",
                 "\"${envValue(".env.production", "API_BASE_URL")}\""
