@@ -3,16 +3,28 @@ package org.broguece.game;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.text.InputFilter;
+import android.text.InputType;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
 import android.view.animation.DecelerateInterpolator;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import java.util.Random;
 
 /** Main-menu "New Game" entry. Picks a random seed client-side, tweens the
- *  header label up from 0 → chosen seed, and lets the player tap the seed
- *  to override it via the numeric keyboard. Also handles the custom-seed
- *  entry point — tapping the seed from the fresh state is identical to
- *  entering one from scratch. */
+ *  header label up from 0 → chosen seed, and lets the player tap the pencil
+ *  (or the seed itself) to override via the soft keyboard. */
 final class NewGameSeedModal extends SeedDetailsModal {
 
     // Java signed-long range caps user-entered seeds at 19 digits; the
@@ -31,6 +43,7 @@ final class NewGameSeedModal extends SeedDetailsModal {
     /** One-shot flag so the intro roll-up only plays on a fresh show(),
      *  not on ModalStack.restore() rebuilds. */
     private boolean playIntroTween;
+    private EditText seedEdit;
 
     NewGameSeedModal(BrogueActivity activity) { super(activity); }
 
@@ -44,17 +57,116 @@ final class NewGameSeedModal extends SeedDetailsModal {
 
     @Override
     protected void onSeedViewBuilt(TextView seedView) {
-        // Visually inline with the other seed-details modals: white,
-        // no underline. Tap discoverability comes from the ripple on press.
-        seedView.setClickable(true);
-        seedView.setOnClickListener(v -> openSeedEditor());
+        LinearLayout panel = (LinearLayout) seedView.getParent();
+        int seedIndex = panel.indexOfChild(seedView);
+        panel.removeView(seedView);
+
+        seedEdit = makeSeedEditText();
+        ImageView pencil = makePencilIcon();
+
+        int seedId = View.generateViewId();
+        seedEdit.setId(seedId);
+
+        RelativeLayout wrapper = new RelativeLayout(activity);
+        wrapper.setClipChildren(false);
+
+        RelativeLayout.LayoutParams seedP = new RelativeLayout.LayoutParams(
+            RelativeLayout.LayoutParams.WRAP_CONTENT,
+            RelativeLayout.LayoutParams.WRAP_CONTENT);
+        seedP.addRule(RelativeLayout.CENTER_IN_PARENT);
+        wrapper.addView(seedEdit, seedP);
+
+        int hitPx = activity.dpToPx(48);
+        RelativeLayout.LayoutParams pencilP = new RelativeLayout.LayoutParams(hitPx, hitPx);
+        pencilP.addRule(RelativeLayout.RIGHT_OF, seedId);
+        pencilP.addRule(RelativeLayout.CENTER_VERTICAL);
+        wrapper.addView(pencil, pencilP);
+
+        panel.addView(wrapper, seedIndex, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        headerLabelView = seedEdit;
+
+        pencil.setOnClickListener(v -> focusEditor());
+        seedEdit.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                commitEdit();
+                return true;
+            }
+            return false;
+        });
 
         if (playIntroTween) {
             playIntroTween = false;
-            startSeedRollTween(seedView, seed);
+            startSeedRollTween(seedEdit, seed);
         } else {
-            seedView.setText(String.valueOf(seed));
+            seedEdit.setText(String.valueOf(seed));
         }
+    }
+
+    private EditText makeSeedEditText() {
+        EditText v = new EditText(activity);
+        v.setTextColor(Palette.GHOST_WHITE);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        v.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        v.setGravity(Gravity.CENTER);
+        v.setPadding(0, activity.dpToPx(6), 0, activity.dpToPx(6));
+        v.setBackground(null);
+        v.setInputType(InputType.TYPE_CLASS_NUMBER);
+        v.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(MAX_SEED_DIGITS) });
+        v.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        v.setSingleLine(true);
+        return v;
+    }
+
+    private ImageView makePencilIcon() {
+        ImageView v = new ImageView(activity);
+        v.setImageResource(R.drawable.ic_edit);
+        v.setImageTintList(ColorStateList.valueOf(Palette.PALE_BLUE));
+        // 48dp outer bounds = comfortable touch target; 15dp padding shrinks
+        // the visible drawable to ~18dp via CENTER_INSIDE.
+        v.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int padding = activity.dpToPx(15);
+        v.setPadding(padding, padding, padding, padding);
+        v.setClickable(true);
+        return v;
+    }
+
+    private void focusEditor() {
+        if (seedEdit == null) return;
+        cancelSeedAnimator();
+        seedEdit.setText(String.valueOf(seed));
+        seedEdit.requestFocus();
+        seedEdit.selectAll();
+        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(seedEdit, 0);
+    }
+
+    /** Called only when the user presses IME Done — the sole "submit" signal.
+     *  Empty / non-numeric / non-positive input retains the original seed;
+     *  the display is rewritten from {@code seed} so it matches what's
+     *  actually committed. */
+    private void commitEdit() {
+        if (seedEdit == null || seedEdit.getWindowToken() == null) return;
+
+        String trimmed = seedEdit.getText().toString().trim();
+        long parsed = 0L;
+        if (!trimmed.isEmpty()) {
+            try { parsed = Long.parseLong(trimmed); }
+            catch (NumberFormatException ignored) { /* parsed stays 0 */ }
+        }
+        if (parsed > 0L && parsed != seed) {
+            seed = parsed;
+            // fetchAndPopulate resets stats + description to pending before
+            // firing the new /seed/:seed, so stale previous-seed data can't
+            // leak into the tile row or description area.
+            fetchAndPopulate();
+        }
+        seedEdit.setText(String.valueOf(seed));
+
+        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(seedEdit.getWindowToken(), 0);
     }
 
     private void startSeedRollTween(TextView seedView, long target) {
@@ -74,35 +186,6 @@ final class NewGameSeedModal extends SeedDetailsModal {
             }
         });
         seedAnimator.start();
-    }
-
-    private void openSeedEditor() {
-        // Tap during the roll kills the tween and snaps to the final seed
-        // so the keyboard pre-fills with the number the player saw resolve.
-        cancelSeedAnimator();
-        if (headerLabelView != null) headerLabelView.setText(String.valueOf(seed));
-
-        activity.textInputDialog.show(
-            "Enter Seed", String.valueOf(seed), MAX_SEED_DIGITS, true,
-            result -> {
-                if (result == null) return;              // cancel
-                String trimmed = result.trim();
-                if (trimmed.isEmpty()) return;           // blank submit == cancel
-                long parsed;
-                try {
-                    parsed = Long.parseLong(trimmed);
-                } catch (NumberFormatException e) {
-                    return;
-                }
-                if (parsed <= 0) return;                 // engine requires seed >= 1
-                if (parsed == seed) return;              // no change
-                seed = parsed;
-                if (headerLabelView != null) headerLabelView.setText(String.valueOf(parsed));
-                // fetchAndPopulate resets stats + description to pending
-                // before firing the new /seed/:seed, so stale previous-seed
-                // data can't leak into the tile row or description area.
-                fetchAndPopulate();
-            });
     }
 
     private void cancelSeedAnimator() {

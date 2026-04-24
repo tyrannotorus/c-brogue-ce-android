@@ -177,18 +177,21 @@ static boolean pollBrogueEvent(rogueEvent *returnEvent, boolean textInput) {
                 androidWriteSaveFile();
             }
             continue;
+        } else if (event.type == SDL_RENDER_DEVICE_RESET) {
+            // GL context was lost and recreated — all textures are invalid.
+            invalidateTextures();
+            refreshScreen();
+            updateScreen();
+            androidSetRestoringVisible(false);
+            continue;
         } else if (event.type == SDL_APP_DIDENTERFOREGROUND
                 || event.type == SDL_RENDER_TARGETS_RESET
                 || (event.type == SDL_WINDOWEVENT
                     && event.window.event == SDL_WINDOWEVENT_EXPOSED)) {
-            // The OS may have cleared the GL backing surface while we were
-            // suspended (common after multi-minute backgrounds on Android).
-            // Brogue's dirty-rect renderer compares against an in-memory
-            // snapshot, so without a full re-plot it would see "nothing
-            // changed" and leave the surface black until individual tiles
-            // happen to redraw. Force a full refresh on every plausible
-            // surface-restoration signal.
+            // Context auto-restored; just dismiss the restoring overlay
+            // and force a full repaint in case the backing surface was cleared.
             refreshScreen();
+            androidSetRestoringVisible(false);
             continue;
         } else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
             resizeWindow(event.window.data1, event.window.data2);

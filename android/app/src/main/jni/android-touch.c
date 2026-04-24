@@ -83,6 +83,16 @@ void androidSetLoadingVisible(boolean visible) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+void androidSetRestoringVisible(boolean visible) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "setRestoringVisible", "(Z)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jboolean)visible);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
 static boolean androidGetSettingBool(const char *key) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();

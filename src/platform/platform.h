@@ -108,6 +108,7 @@ void updateTitleScreenTile(int row, int column, enum displayGlyph glyph,
     short backRed, short backGreen, short backBlue);
 void androidSetOverlayVisible(boolean visible);
 void androidSetLoadingVisible(boolean visible);
+void androidSetRestoringVisible(boolean visible);
 void androidApplySettings(void);
 
 enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL, RENDER_LOADING };

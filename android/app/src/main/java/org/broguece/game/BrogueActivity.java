@@ -92,6 +92,12 @@ public class BrogueActivity extends SDLActivity {
 
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        showStatusOverlay("RESTORING");
+    }
+
     // ---- JNI entry points -------------------------------------------------
     // These methods are called from C. Keep them on the activity so the
     // Java_org_broguece_game_BrogueActivity_* binding names match. Each is
@@ -188,29 +194,41 @@ public class BrogueActivity extends SDLActivity {
         });
     }
 
+    private void showStatusOverlay(String text) {
+        if (loadingOverlay == null) {
+            TextView tv = new TextView(this);
+            tv.setTextColor(Palette.PALE_BLUE);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            tv.setTypeface(Typeface.MONOSPACE);
+            tv.setLetterSpacing(0.15f);
+            tv.setGravity(Gravity.CENTER);
+            tv.setBackgroundColor(Color.BLACK);
+
+            loadingOverlay = tv;
+            addContentView(loadingOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        }
+        ((TextView) loadingOverlay).setText(text);
+        loadingOverlay.setVisibility(View.VISIBLE);
+    }
+
     public void setLoadingVisible(final boolean visible) {
         runOnUiThread(() -> {
             if (visible) {
-                if (loadingOverlay == null) {
-                    TextView tv = new TextView(this);
-                    tv.setText("LOADING");
-                    tv.setTextColor(Palette.PALE_BLUE);
-                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-                    tv.setTypeface(Typeface.MONOSPACE);
-                    tv.setLetterSpacing(0.15f);
-                    tv.setGravity(Gravity.CENTER);
-                    tv.setBackgroundColor(Color.BLACK);
+                showStatusOverlay("LOADING");
+            } else if (loadingOverlay != null) {
+                loadingOverlay.setVisibility(View.GONE);
+            }
+        });
+    }
 
-                    loadingOverlay = tv;
-                    addContentView(loadingOverlay, new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT));
-                }
-                loadingOverlay.setVisibility(View.VISIBLE);
-            } else {
-                if (loadingOverlay != null) {
-                    loadingOverlay.setVisibility(View.GONE);
-                }
+    public void setRestoringVisible(final boolean visible) {
+        runOnUiThread(() -> {
+            if (visible) {
+                showStatusOverlay("RESTORING");
+            } else if (loadingOverlay != null) {
+                loadingOverlay.setVisibility(View.GONE);
             }
         });
     }

@@ -11,4 +11,6 @@ void updateTile(int row, int column, short charIndex,
 void updateScreen(void);
 SDL_Surface *captureScreen(void);
 
+void invalidateTextures(void);
+
 #endif
