@@ -40,11 +40,6 @@ val keystoreProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-// Reads a single KEY=value from a gitignored .env file at the Android
-// project root. Fails the build if the file or the key is missing — the
-// templates (.env.staging.template, .env.production.template) advertise what's
-// expected; a missing value must never silently fall back to empty so the
-// staging URL can't slip into a release build.
 fun envValue(envFile: String, key: String): String {
     val f = rootProject.file(envFile)
     if (!f.exists()) {
@@ -57,6 +52,19 @@ fun envValue(envFile: String, key: String): String {
         .firstOrNull { it.startsWith("$key=") }
         ?: throw GradleException("Missing key '$key' in $envFile")
     return line.substringAfter("=").trim()
+}
+
+fun resolveApiBaseUrl(envFile: String, default: String?): String {
+    val resolved = if (rootProject.file(envFile).exists())
+        envValue(envFile, "API_BASE_URL")
+    else
+        default
+    if (resolved.isNullOrBlank()) {
+        throw GradleException(
+            "API_BASE_URL not set for $envFile — create $envFile with API_BASE_URL=..."
+        )
+    }
+    return resolved
 }
 
 android {
@@ -121,36 +129,29 @@ android {
         buildConfig = true
     }
 
-    // Two and only two variants:
-    //   assembleStaging → debuggable, reads .env.staging
-    //   assembleRelease → production,  reads .env.production
-    // The default `debug` variant is filtered out below so it can't be built
-    // or shipped without an .env injected.
     buildTypes {
-        create("staging") {
-            initWith(getByName("debug"))
-            isDebuggable = true
-            isJniDebuggable = true
-            signingConfig = signingConfigs.getByName("debug")
-            // Read .env.staging when present; fall back to an empty URL
-            // when missing. The variant is disabled further down in that
-            // case (see `beforeVariants`), so this value never lands in a
-            // shipped APK — it exists only because AGP evaluates the
-            // buildType block eagerly during configuration.
-            val stagingUrl = if (rootProject.file(".env.staging").exists())
-                envValue(".env.staging", "API_BASE_URL")
-            else ""
-            buildConfigField("String", "API_BASE_URL", "\"$stagingUrl\"")
-            // Library modules don't define our `staging` type — fall back to
-            // their `debug` when Gradle resolves dependency variants.
-            matchingFallbacks += listOf("debug")
+        // Only created when .env.staging exists.
+        if (rootProject.file(".env.staging").exists()) {
+            create("staging") {
+                initWith(getByName("debug"))
+                isDebuggable = true
+                isJniDebuggable = true
+                signingConfig = signingConfigs.getByName("debug")
+                buildConfigField(
+                    "String", "API_BASE_URL",
+                    "\"${resolveApiBaseUrl(".env.staging", null)}\""
+                )
+                // Library modules don't define `staging` — fall back to `debug`.
+                matchingFallbacks += listOf("debug")
+            }
         }
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Default, overridden by .env.production if present.
             buildConfigField(
                 "String", "API_BASE_URL",
-                "\"${envValue(".env.production", "API_BASE_URL")}\""
+                "\"${resolveApiBaseUrl(".env.production", "https://werewolf.camp/brogue-api")}\""
             )
         }
     }
@@ -168,34 +169,16 @@ android {
     }
 }
 
-// Hide the default `debug` variant — AGP always creates it, but we don't want
-// it bought into: a plain `assembleDebug` would ship without any .env injected
-// at all. Forcing the choice between Staging and Release keeps the IP-leak
-// guard rail honest.
-//
-// Also disable the `staging` variant when `.env.staging` is absent (the
-// GitHub release CI only ships .env.production). This avoids forcing CI
-// to fabricate a placeholder `.env.staging` just to satisfy configuration-
-// phase validation.
-val stagingEnvFile = rootProject.file(".env.staging")
+// Disable AGP's auto-created `debug` variant — force staging or release.
 androidComponents {
     beforeVariants(selector().withBuildType("debug")) { variant ->
         variant.enable = false
     }
-    if (!stagingEnvFile.exists()) {
-        beforeVariants(selector().withBuildType("staging")) { variant ->
-            variant.enable = false
-        }
-    }
 }
 
-// Staging's network-security config is generated from .env.staging so the
-// host never lives in tracked source. Release uses src/release/res/xml.
+// Staging's network-security config is generated so the host never lives in tracked source.
 androidComponents {
     onVariants(selector().withBuildType("staging")) { variant ->
-        // Skip when the staging variant is disabled (no .env.staging present).
-        if (!stagingEnvFile.exists()) return@onVariants
-
         val envUrl = envValue(".env.staging", "API_BASE_URL")
         val hostValue = URI(envUrl).host
             ?: throw GradleException("API_BASE_URL in .env.staging has no host component: $envUrl")
@@ -214,7 +197,5 @@ androidComponents {
 }
 
 dependencies {
-    // Pull-to-refresh on the Play Seeds modal. AndroidX is already enabled in
-    // gradle.properties; this is Google's own library, ~200KB on wire.
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }
