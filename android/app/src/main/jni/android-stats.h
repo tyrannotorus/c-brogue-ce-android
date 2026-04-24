@@ -19,7 +19,7 @@ void androidNotifyAllyFreed(const char *monsterName);
 void androidNotifyAllyDied(const char *monsterName);
 void androidNotifyPlayerDied(const char *killedBy, int depth, int turns);
 void androidNotifyPlayerWon(boolean superVictory, int depth, int turns);
-void androidNotifyPlayerQuit(void);
+void androidNotifyPlayerQuit(int depth, int turns);
 void androidNotifyAmuletPickedUp(void);
 
 #endif

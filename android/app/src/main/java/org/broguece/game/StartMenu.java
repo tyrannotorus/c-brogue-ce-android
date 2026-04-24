@@ -14,11 +14,11 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Title-screen start menu: "Resume / New Game", "Play Seed", "Community",
+/** Title-screen start menu: "New Game", "Resume Game", "Community",
  *  "Credits". Shown by the engine via showStartMenu() and dismissed when the
  *  user chooses a path. Button-row styling is exposed statically so modals
- *  layered over the start menu ({@link CommunityModal}, {@link CustomSeedModal})
- *  can reuse the exact visual style. */
+ *  layered over the start menu (e.g. {@link CommunityModal} and the
+ *  SeedDetailsModal family) can reuse the exact visual style. */
 final class StartMenu {
 
     // Constants shared with android-touch.c — must match.
@@ -86,18 +86,20 @@ final class StartMenu {
             sepP.setMargins(activity.dpToPx(8), 0, activity.dpToPx(8), activity.dpToPx(12));
             panel.addView(sep, sepP);
 
-            // Single slot: "Resume Game" when a compatible save exists,
-            // otherwise "New Game". An incompatible save falls into the
-            // New Game branch (starting fresh overwrites the unusable save).
+            // New Game opens the seed-details modal with a client-picked
+            // random seed; Play is what actually fires CHOICE_PLAY_SEED.
+            addButton(panel, "New Game", true,
+                v -> activity.newGameSeedModal.show());
+
+            // Resume Game is a direct engine call — no modal. Disabled when
+            // there's no save, or the save predates a version bump.
             boolean canResume = hasSave && saveCompatible;
-            addButton(panel, canResume ? "Resume Game" : "New Game", true, v -> {
+            addButton(panel, "Resume Game", canResume, v -> {
                 activity.modalStack.clear();
                 dismiss();
-                activity.nativeStartMenuResult(canResume ? CHOICE_RESUME : CHOICE_NEW_GAME);
+                activity.nativeStartMenuResult(CHOICE_RESUME);
             });
 
-            addButton(panel, "Play Seed", true,
-                v -> activity.customSeedModal.show());
             addButton(panel, "Community", true,
                 v -> activity.communityModal.show());
             addButton(panel, "Credits", true,

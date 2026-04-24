@@ -153,8 +153,8 @@ final class PlayerStatsModal {
     }
 
     /** Last ten distinct seeds this install has played, newest first. Each
-     *  row is clickable — it opens CustomSeedModal with the seed pre-filled
-     *  so the player can replay it without retyping a 19-digit number. */
+     *  row is clickable — it opens ReplayRecentSeedModal, which shows the
+     *  seed's fetched stats with a Play button. */
     private void addRecentSeedsSection(LinearLayout panel, PlayerStats stats) {
         TextView subhead = new TextView(activity);
         subhead.setText("Recently Played Seeds");
@@ -201,7 +201,7 @@ final class PlayerStatsModal {
 
         row.setOnClickListener(v -> {
             activity.modalStack.pop();
-            activity.customSeedModal.show(seed);
+            activity.replayRecentSeedModal.show(seed);
         });
 
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(

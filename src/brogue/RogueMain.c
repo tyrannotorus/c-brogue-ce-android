@@ -1206,7 +1206,7 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
             androidNotifyPlayerDied(killedBy, rogue.depthLevel, (int)rogue.playerTurnNumber);
         } else {
             notifyEvent(GAMEOVER_QUIT, theEntry.score, 0, theEntry.description, recordingFilename);
-            androidNotifyPlayerQuit();
+            androidNotifyPlayerQuit(rogue.depthLevel, (int)rogue.playerTurnNumber);
         }
     } else {
         notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");

@@ -212,6 +212,18 @@ Java_org_broguece_game_BrogueActivity_nativeStartMenuResultWithSeed(
 }
 
 /*
+ * Remove the fixed mobile save file. Called from the Play button of any
+ * seed-details modal that starts a new run — a fresh run overwrites the
+ * slot, so any lingering save would never be reachable again.
+ */
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeDeleteSaveFile(
+        JNIEnv *env, jobject thiz) {
+    (void)env; (void)thiz;
+    androidDeleteSaveFile();
+}
+
+/*
  * User tapped the start-menu backdrop. Signals the Phase 2 loop in
  * titleMenu() to break out and re-enter Phase 1 (the "BROGUE" title flames).
  */

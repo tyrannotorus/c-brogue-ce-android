@@ -96,12 +96,12 @@ void androidNotifyPlayerWon(boolean superVictory, int depth, int turns) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
-void androidNotifyPlayerQuit(void) {
+void androidNotifyPlayerQuit(int depth, int turns) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
-    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerQuit", "()V");
-    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerQuit", "(II)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jint)depth, (jint)turns);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
 }

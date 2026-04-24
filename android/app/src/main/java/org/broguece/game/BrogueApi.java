@@ -6,6 +6,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.provider.Settings;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -31,9 +32,16 @@ final class BrogueApi {
 
     private static final int CONNECT_TIMEOUT_MS     = 5000;
     private static final int WRITE_READ_TIMEOUT_MS  = 5000;
-    // Reads are in response to direct user actions (they see a spinner), so we
-    // give the server more headroom before giving up.
-    private static final int READ_READ_TIMEOUT_MS   = 15000;
+    // Reads are in response to direct user actions (they see a spinner).
+    // Worst case connect + read = 15s before the caller paints an error.
+    private static final int READ_READ_TIMEOUT_MS   = 10000;
+
+    // Server endpoint paths. Must stay in lockstep with src/server/Routes.ts.
+    private static final String PATH_WEEKLY      = "/weekly";
+    private static final String PATH_FUN         = "/fun";
+    private static final String PATH_SEED_PREFIX = "/seed/";
+    private static final String PATH_GAME_START  = "/game/start";
+    private static final String PATH_GAME_END    = "/game/end";
 
     private final BrogueActivity activity;
     private ExecutorService executor;
@@ -97,14 +105,45 @@ final class BrogueApi {
             // loses integer precision above 2^53 when Node.js parses it.
             body.put("seed", String.valueOf(seed));
             body.put("appVersion", appVersionString());
-            postFireAndForget("/game/start", body);
+            postFireAndForget(PATH_GAME_START, body);
         } catch (Exception ignored) { }
     }
 
-/** Fetches the combined seeds payload. Callback runs on the UI thread with
-     *  null for any failure. */
-    void fetchSeeds(Consumer<JSONObject> onResult) {
-        getJson("/seeds", JSONObject::new, onResult);
+    /** outcome: "died", "won", or "quit" — matches the server's OutcomeEn. */
+    void gameEnd(long seed, String outcome, int depth, int turns) {
+        String did = deviceId();
+        if (did == null) return;
+        try {
+            JSONObject body = new JSONObject();
+            body.put("installId", did);
+            body.put("seed", String.valueOf(seed));
+            body.put("outcome", outcome);
+            body.put("depth", depth);
+            body.put("turns", turns);
+            body.put("appVersion", appVersionString());
+            postFireAndForget(PATH_GAME_END, body);
+        } catch (Exception ignored) { }
+    }
+
+/** Current weekly contest seed as {@code {seed: "<digits>"}}. The seed
+     *  number is all the client needs — WeeklySeedModal then hits /seed/:seed
+     *  for description + stats via {@link #fetchSeed}. */
+    void fetchWeekly(Consumer<JSONObject> onResult) {
+        getJson(PATH_WEEKLY, JSONObject::new, onResult);
+    }
+
+    /** Curator-approved fun-seed catalog, newest first. Each row is
+     *  {@code {seed, description}}; per-seed stats arrive via
+     *  {@link #fetchSeed} when a row is tapped. */
+    void fetchFun(Consumer<JSONArray> onResult) {
+        getJson(PATH_FUN, JSONArray::new, onResult);
+    }
+
+    /** Per-seed detail for the seed-details modal family. Returns
+     *  {description, plays, deaths, wins}; unknown seeds come back with zeros
+     *  and null description. Callback runs on the UI thread; null on failure. */
+    void fetchSeed(long seed, Consumer<JSONObject> onResult) {
+        getJson(PATH_SEED_PREFIX + seed, JSONObject::new, onResult);
     }
 
     // ---- HTTP primitives ----

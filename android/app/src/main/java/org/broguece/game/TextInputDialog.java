@@ -34,6 +34,16 @@ final class TextInputDialog {
 
     void show(final String prompt, final String defaultText,
               final int maxLen, final boolean numericOnly) {
+        show(prompt, defaultText, maxLen, numericOnly, null);
+    }
+
+    /** Java-driven variant used by overlays that don't go through the engine's
+     *  text-input channel (NewGameSeedModal's tap-to-edit seed). Passing a
+     *  non-null {@code onResult} bypasses {@link BrogueActivity#nativeTextInputResult}
+     *  and delivers the string to the caller instead; null on cancel. */
+    void show(final String prompt, final String defaultText,
+              final int maxLen, final boolean numericOnly,
+              final java.util.function.Consumer<String> onResult) {
         activity.runOnUiThread(() -> {
             EditText input = new EditText(activity);
             input.setTextColor(Palette.GHOST_WHITE);
@@ -113,15 +123,21 @@ final class TextInputDialog {
                     android.R.style.Theme_DeviceDefault_Dialog_NoActionBar)
                 .setView(layout)
                 .setCancelable(true)
-                .setOnCancelListener(d -> activity.nativeTextInputResult(false, ""))
+                .setOnCancelListener(d -> {
+                    if (onResult != null) onResult.accept(null);
+                    else activity.nativeTextInputResult(false, "");
+                })
                 .create();
 
             cancelBtn.setOnClickListener(v -> {
-                activity.nativeTextInputResult(false, "");
+                if (onResult != null) onResult.accept(null);
+                else activity.nativeTextInputResult(false, "");
                 dialog.dismiss();
             });
             okBtn.setOnClickListener(v -> {
-                activity.nativeTextInputResult(true, input.getText().toString());
+                String text = input.getText().toString();
+                if (onResult != null) onResult.accept(text);
+                else activity.nativeTextInputResult(true, text);
                 dialog.dismiss();
             });
 
