@@ -21,10 +21,11 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Community modal: browse the server-hosted Weekly Contest seed and the
- *  catalog of fun seeds. Tapping either pushes the internal Seed Detail
- *  modal with stats + a Play button. Session cache + fetch live here;
- *  chrome is shared via {@link ModalChrome}. */
+/** Community modal: browse the fun-seed catalog + a static entry point for
+ *  the weekly contest. Weekly discovery (which seed is current) is owned
+ *  by {@link WeeklySeedModal}, so this modal only fetches /fun. Tapping a
+ *  row pushes a {@link SeedDetailsModal} subclass which fetches its own
+ *  /seed/:seed — this modal no longer owns stats rendering. */
 final class CommunityModal {
 
     private static final int FUN_ROW_HEIGHT_DP = 50;
@@ -33,14 +34,14 @@ final class CommunityModal {
 
     private final BrogueActivity activity;
 
-    private boolean seedsFetchedThisSession;
-    private long cachedWeeklySeed;                     // 0 = unknown
-    private String cachedWeeklyDescription;            // null = unknown
-    private Stats cachedWeeklyStats;                   // null = unknown
+    private boolean funFetchedThisSession;
     private java.util.List<FunSeedRow> cachedFunSeeds; // null = unknown
-    private boolean seedsFetchInFlight;
+    private boolean funFetchInFlight;
+    /** Full /weekly payload cached from the parallel fetch so tapping Play
+     *  Weekly Contest opens with zero network calls. null = never succeeded
+     *  this session; the weekly modal falls back to its own /weekly fetch. */
+    private JSONObject cachedWeeklyPayload;
 
-    private FrameLayout weeklyState;
     private FrameLayout funState;
     private SwipeRefreshLayout swipe;
     private View listRoot;
@@ -54,64 +55,19 @@ final class CommunityModal {
     }
 
     void clearCache() {
-        seedsFetchedThisSession = false;
-        cachedWeeklySeed = 0;
-        cachedWeeklyDescription = null;
-        cachedWeeklyStats = null;
+        funFetchedThisSession = false;
         cachedFunSeeds = null;
+        cachedWeeklyPayload = null;
     }
 
     // ---- Data classes ----
 
-    /** Per-seed counters returned by the server. The detail modal renders
-     *  plays/deaths/wins; quits is parsed for forward compat but not shown. */
-    private static final class Stats {
-        final int plays, wins, deaths;
-        Stats(int plays, int wins, int deaths) {
-            this.plays = plays;
-            this.wins = wins;
-            this.deaths = deaths;
-        }
-        static Stats fromJson(JSONObject obj) {
-            return new Stats(
-                obj.optInt("plays", 0),
-                obj.optInt("wins", 0),
-                obj.optInt("deaths", 0));
-        }
-        static Stats zero() {
-            return new Stats(0, 0, 0);
-        }
-    }
-
     private static final class FunSeedRow {
         final long seed;
         final String description;
-        final Stats stats;
-        FunSeedRow(long seed, String description, Stats stats) {
+        FunSeedRow(long seed, String description) {
             this.seed = seed;
             this.description = description;
-            this.stats = stats;
-        }
-    }
-
-    private static final class SeedDetail {
-        final long seed;
-        final String title;
-        final String description;
-        final String url;
-        final String headerLabel; // null => show seed number as the header
-        final int plays, deaths, wins;
-        SeedDetail(long seed, String title, String description, String url,
-                   String headerLabel,
-                   int plays, int deaths, int wins) {
-            this.seed = seed;
-            this.title = title;
-            this.description = description;
-            this.url = url;
-            this.headerLabel = headerLabel;
-            this.plays = plays;
-            this.deaths = deaths;
-            this.wins = wins;
         }
     }
 
@@ -129,17 +85,22 @@ final class CommunityModal {
         StartMenu.addButton(panel, "View Stats", true,
             v -> activity.playerStatsModal.show());
 
-        // Weekly Contest section — dynamic, state-managed.
+        // Weekly Contest — button is always enabled. On tap, we hand the
+        // pre-fetched /weekly payload to the modal so it opens with zero
+        // network calls. If /weekly failed at open time (rare — it fires
+        // in parallel with /fun, same network condition), the modal falls
+        // back to its own /weekly fetch.
         addSectionHeader(panel,
             "Weekly Contest",
             "A new weekly seed every Tuesday!",
             null);
-        weeklyState = new FrameLayout(activity);
-        LinearLayout.LayoutParams weeklyStateP = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        weeklyStateP.bottomMargin = activity.dpToPx(4);
-        panel.addView(weeklyState, weeklyStateP);
+        StartMenu.addButton(panel, "Play Weekly Contest", true, v -> {
+            if (cachedWeeklyPayload != null) {
+                activity.weeklySeedModal.show(cachedWeeklyPayload);
+            } else {
+                activity.weeklySeedModal.show();
+            }
+        });
 
         // Fun Seeds section — fixed height reserved for up to 10 rows so the
         // layout doesn't jump between loading, error, and data states.
@@ -153,11 +114,9 @@ final class CommunityModal {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        if (seedsFetchedThisSession) {
-            renderWeeklyData(cachedWeeklySeed, cachedWeeklyDescription, cachedWeeklyStats);
+        if (funFetchedThisSession) {
             renderFunData(cachedFunSeeds);
         } else {
-            renderWeeklyLoading();
             renderFunLoading();
         }
 
@@ -168,7 +127,7 @@ final class CommunityModal {
 
         swipe = new SwipeRefreshLayout(activity);
         swipe.addView(scroll);
-        swipe.setOnRefreshListener(() -> fetchSeeds(true));
+        swipe.setOnRefreshListener(() -> fetchFun(true));
         root.addView(swipe, ModalChrome.centeredPanelParams(activity));
 
         activity.addContentView(root, new FrameLayout.LayoutParams(
@@ -177,8 +136,8 @@ final class CommunityModal {
 
         ModalChrome.animateIn(panel);
 
-        if (!seedsFetchedThisSession) {
-            fetchSeeds(false);
+        if (!funFetchedThisSession) {
+            fetchFun(false);
         }
 
         return root;
@@ -225,40 +184,6 @@ final class CommunityModal {
         return wrapper;
     }
 
-    private void renderWeeklyLoading() {
-        if (weeklyState == null) return;
-        weeklyState.removeAllViews();
-        weeklyState.addView(makeStateSpinner());
-    }
-
-    private void renderWeeklyError(String message) {
-        if (weeklyState == null) return;
-        weeklyState.removeAllViews();
-        weeklyState.addView(makeStateMessage(message));
-    }
-
-    private void renderWeeklyData(long weekly, String description, Stats stats) {
-        if (weeklyState == null) return;
-        weeklyState.removeAllViews();
-        final Stats safe = stats != null ? stats : Stats.zero();
-        final String safeDescription = description != null && !description.isEmpty()
-            ? description : String.valueOf(weekly);
-        LinearLayout container = new LinearLayout(activity);
-        container.setOrientation(LinearLayout.VERTICAL);
-        StartMenu.addButton(container, "Play Weekly Contest", true, v -> {
-            SeedDetail d = new SeedDetail(weekly,
-                "Weekly Contest",
-                "Follow the contest at r/brogueforum",
-                "https://www.reddit.com/r/brogueforum/",
-                safeDescription,
-                safe.plays, safe.deaths, safe.wins);
-            activity.modalStack.push(() -> buildSeedDetailOverlay(d));
-        });
-        weeklyState.addView(container, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT));
-    }
-
     private void renderFunLoading() {
         if (funState == null) return;
         funState.removeAllViews();
@@ -280,8 +205,7 @@ final class CommunityModal {
             int count = Math.min(rows.size(), FUN_ROWS_MAX);
             for (int i = 0; i < count; i++) {
                 FunSeedRow r = rows.get(i);
-                addFunSeedRow(list, r.seed, r.description,
-                    r.stats.plays, r.stats.deaths, r.stats.wins);
+                addFunSeedRow(list, r.seed, r.description);
             }
         }
         funState.addView(list, new FrameLayout.LayoutParams(
@@ -289,10 +213,13 @@ final class CommunityModal {
             FrameLayout.LayoutParams.WRAP_CONTENT));
     }
 
-    /** Fetch /seeds. Success updates the cache and repaints the two sections;
-     *  any failure paints "No Network Connection" / "Server Unavailable". */
-    private void fetchSeeds(boolean fromPullToRefresh) {
-        if (seedsFetchInFlight) {
+    /** Fetch /fun and /weekly in parallel. /fun drives the visible list
+     *  state (loading/error/data). /weekly quietly populates
+     *  {@link #cachedWeeklyPayload} for a zero-round-trip handoff when
+     *  the user taps Play Weekly Contest; its failure is silent (the
+     *  weekly modal will retry /weekly if the cache is missing). */
+    private void fetchFun(boolean fromPullToRefresh) {
+        if (funFetchInFlight) {
             if (fromPullToRefresh && swipe != null) {
                 swipe.setRefreshing(false);
             }
@@ -300,73 +227,55 @@ final class CommunityModal {
         }
 
         if (!activity.api.hasInternetCapability()) {
-            renderWeeklyError("No Network Connection");
             renderFunError("No Network Connection");
             if (swipe != null) swipe.setRefreshing(false);
             return;
         }
 
-        if (!seedsFetchedThisSession) {
-            renderWeeklyLoading();
+        if (!funFetchedThisSession) {
             renderFunLoading();
         }
 
-        seedsFetchInFlight = true;
+        funFetchInFlight = true;
         final View modalRoot = listRoot;
 
-        activity.api.fetchSeeds(obj -> {
-            seedsFetchInFlight = false;
+        // Weekly — fires alongside /fun, independent completion. Failure is
+        // silent; the weekly modal falls back to its own fetch on tap.
+        activity.api.fetchWeekly(obj -> {
+            if (obj != null) cachedWeeklyPayload = obj;
+        });
+
+        activity.api.fetchFun(arr -> {
+            funFetchInFlight = false;
             if (swipe != null) swipe.setRefreshing(false);
 
             boolean modalStillOpen = modalRoot != null && modalRoot.isAttachedToWindow();
 
-            if (obj == null) {
-                if (modalStillOpen) {
-                    renderWeeklyError("Server Unavailable");
-                    renderFunError("Server Unavailable");
-                }
+            if (arr == null) {
+                if (modalStillOpen) renderFunError("Server Unavailable");
                 return;
             }
 
-            long weekly;
-            String weeklyDescription;
-            Stats weeklyStats;
             java.util.List<FunSeedRow> fun;
             try {
-                // Server sends seeds as strings to preserve int64 precision —
-                // see BrogueApi#gameStart for the full rationale. `stats` is
-                // always present on every seed (zeros when no plays).
-                JSONObject weeklyObj = obj.getJSONObject("weekly");
-                weekly = Long.parseLong(weeklyObj.getString("seed"));
-                weeklyDescription = weeklyObj.optString("description", "");
-                weeklyStats = Stats.fromJson(weeklyObj.getJSONObject("stats"));
-                JSONArray funArr = obj.getJSONArray("fun");
-                fun = new java.util.ArrayList<>(funArr.length());
-                for (int i = 0; i < funArr.length(); i++) {
-                    JSONObject r = funArr.getJSONObject(i);
+                // Seeds are JSON strings to preserve int64 precision —
+                // JSON Number truncates integers above 2^53 in Node/JS.
+                fun = new java.util.ArrayList<>(arr.length());
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject r = arr.getJSONObject(i);
                     fun.add(new FunSeedRow(
                         Long.parseLong(r.getString("seed")),
-                        r.optString("description", ""),
-                        Stats.fromJson(r.getJSONObject("stats"))));
+                        r.optString("description", "")));
                 }
             } catch (Exception e) {
-                if (modalStillOpen) {
-                    renderWeeklyError("Server Unavailable");
-                    renderFunError("Server Unavailable");
-                }
+                if (modalStillOpen) renderFunError("Server Unavailable");
                 return;
             }
 
-            cachedWeeklySeed = weekly;
-            cachedWeeklyDescription = weeklyDescription;
-            cachedWeeklyStats = weeklyStats;
             cachedFunSeeds = fun;
-            seedsFetchedThisSession = true;
+            funFetchedThisSession = true;
 
-            if (modalStillOpen) {
-                renderWeeklyData(weekly, weeklyDescription, weeklyStats);
-                renderFunData(fun);
-            }
+            if (modalStillOpen) renderFunData(fun);
         });
     }
 
@@ -396,8 +305,7 @@ final class CommunityModal {
                       ModalChrome.emberSeparatorParams(activity, 4, 4, 0, 8));
     }
 
-    private void addFunSeedRow(LinearLayout panel, long seed, String description,
-                                int plays, int deaths, int wins) {
+    private void addFunSeedRow(LinearLayout panel, long seed, String description) {
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -431,107 +339,12 @@ final class CommunityModal {
         row.addView(descView, new LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        row.setOnClickListener(v -> {
-            SeedDetail d = new SeedDetail(seed, "Fun Seed", description, null,
-                null, plays, deaths, wins);
-            activity.modalStack.push(() -> buildSeedDetailOverlay(d));
-        });
+        row.setOnClickListener(v -> activity.funSeedModal.show(seed));
 
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
         p.setMargins(0, activity.dpToPx(2), 0, activity.dpToPx(2));
         panel.addView(row, p);
-    }
-
-    // ---- Seed detail overlay (private — reached only from the list) ----
-
-    private View buildSeedDetailOverlay(SeedDetail d) {
-        FrameLayout root = new FrameLayout(activity);
-        LinearLayout panel = ModalChrome.buildPanel(activity, root, d.title.toUpperCase());
-
-        TextView seedView = new TextView(activity);
-        seedView.setText(d.headerLabel != null ? d.headerLabel : String.valueOf(d.seed));
-        seedView.setTextColor(Palette.GHOST_WHITE);
-        seedView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        seedView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        seedView.setGravity(Gravity.CENTER);
-        seedView.setPadding(0, activity.dpToPx(6), 0, activity.dpToPx(6));
-        panel.addView(seedView);
-
-        TextView descView = new TextView(activity);
-        descView.setText(d.description);
-        descView.setTextColor(Palette.PALE_BLUE);
-        descView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        descView.setTypeface(Typeface.MONOSPACE);
-        descView.setGravity(Gravity.CENTER);
-        descView.setPadding(activity.dpToPx(8), activity.dpToPx(2),
-                            activity.dpToPx(8), activity.dpToPx(16));
-        if (d.url != null) {
-            descView.setPaintFlags(descView.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
-            descView.setOnClickListener(v -> Links.open(activity,d.url));
-        }
-        panel.addView(descView);
-
-        LinearLayout statsRow = new LinearLayout(activity);
-        statsRow.setOrientation(LinearLayout.HORIZONTAL);
-        addStatTile(statsRow, d.plays, "PLAYS");
-        addStatTile(statsRow, d.deaths, "DEATHS");
-        addStatTile(statsRow, d.wins, "WINS");
-        LinearLayout.LayoutParams statsP = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT);
-        statsP.setMargins(0, 0, 0, activity.dpToPx(16));
-        panel.addView(statsRow, statsP);
-
-        StartMenu.addButton(panel, "Play", true, v -> {
-            activity.modalStack.clear();
-            activity.startMenu.dismiss();
-            // Telemetry and local stats both fire from
-            // BrogueActivity.onGameStart once the engine reports the run
-            // has started. No per-modal duplication.
-            activity.nativeStartMenuResultWithSeed(StartMenu.CHOICE_PLAY_SEED, d.seed);
-        });
-        StartMenu.addButton(panel, "Back", true, v -> activity.modalStack.pop());
-
-        ModalChrome.present(activity, root, panel);
-        return root;
-    }
-
-    private void addStatTile(LinearLayout parent, int value, String label) {
-        LinearLayout tile = new LinearLayout(activity);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setGravity(Gravity.CENTER);
-        tile.setPadding(activity.dpToPx(6), activity.dpToPx(12),
-                        activity.dpToPx(6), activity.dpToPx(12));
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.RECTANGLE);
-        bg.setCornerRadius(activity.dpToPx(4));
-        bg.setColor(Palette.ITEM_BG);
-        tile.setBackground(bg);
-
-        TextView num = new TextView(activity);
-        num.setText(String.valueOf(value));
-        num.setTextColor(Palette.GHOST_WHITE);
-        num.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        num.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        num.setGravity(Gravity.CENTER);
-        tile.addView(num);
-
-        TextView lbl = new TextView(activity);
-        lbl.setText(label);
-        lbl.setTextColor(Palette.PALE_BLUE);
-        lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
-        lbl.setTypeface(Typeface.MONOSPACE);
-        lbl.setLetterSpacing(0.2f);
-        lbl.setGravity(Gravity.CENTER);
-        lbl.setPadding(0, activity.dpToPx(4), 0, 0);
-        tile.addView(lbl);
-
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        p.setMargins(activity.dpToPx(3), 0, activity.dpToPx(3), 0);
-        parent.addView(tile, p);
     }
 }

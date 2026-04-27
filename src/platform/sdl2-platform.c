@@ -177,6 +177,22 @@ static boolean pollBrogueEvent(rogueEvent *returnEvent, boolean textInput) {
                 androidWriteSaveFile();
             }
             continue;
+        } else if (event.type == SDL_RENDER_DEVICE_RESET) {
+            // GL context was lost and recreated — all textures are invalid.
+            invalidateTextures();
+            refreshScreen();
+            updateScreen();
+            androidSetRestoringVisible(false);
+            continue;
+        } else if (event.type == SDL_APP_DIDENTERFOREGROUND
+                || event.type == SDL_RENDER_TARGETS_RESET
+                || (event.type == SDL_WINDOWEVENT
+                    && event.window.event == SDL_WINDOWEVENT_EXPOSED)) {
+            // Context auto-restored; just dismiss the restoring overlay
+            // and force a full repaint in case the backing surface was cleared.
+            refreshScreen();
+            androidSetRestoringVisible(false);
+            continue;
         } else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
             resizeWindow(event.window.data1, event.window.data2);
         } else if (event.type == SDL_KEYDOWN) {

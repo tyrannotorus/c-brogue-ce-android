@@ -1,0 +1,3 @@
+- "New Game" and "Resume Game" as separate start-menu buttons
+- Seed preview modal with stats and description before playing
+- Community menu simplified

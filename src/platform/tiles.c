@@ -567,6 +567,18 @@ void initTiles() {
 /// \param outputWidth renderer's output width
 /// \param outputHeight renderer's output height
 ///
+void invalidateTextures(void) {
+    for (int i = 0; i < 4; i++) {
+        if (Textures[i]) {
+            SDL_DestroyTexture(Textures[i]);
+            Textures[i] = NULL;
+        }
+    }
+    baseTileWidth = -1;
+    baseTileHeight = -1;
+}
+
+
 static void createTextures(SDL_Renderer *renderer, int outputWidth, int outputHeight) {
 
     // choose tile size

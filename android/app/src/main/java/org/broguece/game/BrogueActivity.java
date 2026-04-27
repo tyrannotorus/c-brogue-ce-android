@@ -31,14 +31,21 @@ public class BrogueActivity extends SDLActivity {
     final ModalStack modalStack = new ModalStack(this);
     final AboutModal aboutModal = new AboutModal(this);
     final CommunityModal communityModal = new CommunityModal(this);
-    final CustomSeedModal customSeedModal = new CustomSeedModal(this);
     final PlayerStatsModal playerStatsModal = new PlayerStatsModal(this);
     final StartMenu startMenu = new StartMenu(this);
+    // Seed-details modal family — all inherit from SeedDetailsModal and
+    // share one visual frame; subclasses differ only in title, header
+    // label source, and a few hooks.
+    final FunSeedModal funSeedModal = new FunSeedModal(this);
+    final WeeklySeedModal weeklySeedModal = new WeeklySeedModal(this);
+    final NewGameSeedModal newGameSeedModal = new NewGameSeedModal(this);
+    final ReplayRecentSeedModal replayRecentSeedModal = new ReplayRecentSeedModal(this);
+    final DeathModal deathModal = new DeathModal(this);
     private SettingsPanel settingsPanel;
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
     private InventoryOverlay inventoryRenderer;
-    private TextInputDialog textInputDialog;
+    TextInputDialog textInputDialog;
     private AchievementToast achievementToast;
 
     @Override
@@ -86,6 +93,12 @@ public class BrogueActivity extends SDLActivity {
 
     }
 
+    @Override
+    protected void onStop() {
+        super.onStop();
+        showStatusOverlay("RESTORING");
+    }
+
     // ---- JNI entry points -------------------------------------------------
     // These methods are called from C. Keep them on the activity so the
     // Java_org_broguece_game_BrogueActivity_* binding names match. Each is
@@ -113,7 +126,15 @@ public class BrogueActivity extends SDLActivity {
     // background HandlerThread so we return fast and don't perturb the game
     // loop. Call sites in C already guard !rogue.playbackMode, so save-load
     // and recording playback don't re-dispatch historical events.
+    // Latched from onGameStart so end-of-run handlers know which seed to
+    // report to /game/end. Cleared after reporting so a spurious end callback
+    // without a prior start can't double-report a stale seed.
+    private long currentSeed;
+    private boolean currentSeedValid;
+
     public void onGameStart(long seed) {
+        currentSeed = seed;
+        currentSeedValid = true;
         StatsStore.get(this).recordGameStart();
         StatsStore.get(this).recordSeedPlayed(seed);
         api.gameStart(seed);
@@ -137,14 +158,45 @@ public class BrogueActivity extends SDLActivity {
 
     public void onPlayerDied(final String killedBy, final int depth, final int turns) {
         StatsStore.get(this).recordPlayerDied(killedBy, depth, turns);
+        reportGameEnd("died", depth, turns);
+    }
+
+    public void showDeathScreen(String description, int turns) {
+        deathModal.show(description, turns);
+    }
+
+    public native void nativeDeathFadeDone();
+    public native void nativeDeathScreenDismissed();
+
+    public void onDeathFlamesReady() {
+        deathModal.onFlamesReady();
     }
 
     public void onPlayerWon(final boolean superVictory, final int depth, final int turns) {
         StatsStore.get(this).recordPlayerWon(superVictory, depth, turns);
+        reportGameEnd("won", depth, turns);
     }
 
-    public void onPlayerQuit() {
+    public void onPlayerQuit(final int depth, final int turns) {
         StatsStore.get(this).recordPlayerQuit();
+        reportGameEnd("quit", depth, turns);
+    }
+
+    private void reportGameEnd(String outcome, int depth, int turns) {
+        if (!currentSeedValid) return;
+        api.gameEnd(currentSeed, outcome, depth, turns);
+        currentSeedValid = false;
+    }
+
+    public void hideGameUI() {
+        final java.util.concurrent.CountDownLatch latch =
+            new java.util.concurrent.CountDownLatch(1);
+        runOnUiThread(() -> {
+            gameOverlay.setVisibility(View.GONE);
+            inventoryOverlay.setVisibility(View.GONE);
+            latch.countDown();
+        });
+        try { latch.await(); } catch (InterruptedException ignored) {}
     }
 
     public void setOverlayVisible(final boolean visible) {
@@ -160,34 +212,47 @@ public class BrogueActivity extends SDLActivity {
                 // flame loop, so restoring here puts the modal back up
                 // immediately instead of making the user tap through flames.
                 modalStack.restore();
+                deathModal.fadeOutOverlay();
             }
             gameOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
         });
     }
 
+    private void showStatusOverlay(String text) {
+        if (loadingOverlay == null) {
+            TextView tv = new TextView(this);
+            tv.setTextColor(Palette.PALE_BLUE);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            tv.setTypeface(Typeface.MONOSPACE);
+            tv.setLetterSpacing(0.15f);
+            tv.setGravity(Gravity.CENTER);
+            tv.setBackgroundColor(Color.BLACK);
+
+            loadingOverlay = tv;
+            addContentView(loadingOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        }
+        ((TextView) loadingOverlay).setText(text);
+        loadingOverlay.setVisibility(View.VISIBLE);
+    }
+
     public void setLoadingVisible(final boolean visible) {
         runOnUiThread(() -> {
             if (visible) {
-                if (loadingOverlay == null) {
-                    TextView tv = new TextView(this);
-                    tv.setText("LOADING");
-                    tv.setTextColor(Palette.PALE_BLUE);
-                    tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-                    tv.setTypeface(Typeface.MONOSPACE);
-                    tv.setLetterSpacing(0.15f);
-                    tv.setGravity(Gravity.CENTER);
-                    tv.setBackgroundColor(Color.BLACK);
+                showStatusOverlay("LOADING");
+            } else if (loadingOverlay != null) {
+                loadingOverlay.setVisibility(View.GONE);
+            }
+        });
+    }
 
-                    loadingOverlay = tv;
-                    addContentView(loadingOverlay, new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT));
-                }
-                loadingOverlay.setVisibility(View.VISIBLE);
-            } else {
-                if (loadingOverlay != null) {
-                    loadingOverlay.setVisibility(View.GONE);
-                }
+    public void setRestoringVisible(final boolean visible) {
+        runOnUiThread(() -> {
+            if (visible) {
+                showStatusOverlay("RESTORING");
+            } else if (loadingOverlay != null) {
+                loadingOverlay.setVisibility(View.GONE);
             }
         });
     }
@@ -211,6 +276,7 @@ public class BrogueActivity extends SDLActivity {
     native void nativeStartMenuCancel();
     native void nativeTextInputResult(boolean confirmed, String text);
     native long nativeGetSeed();
+    native void nativeDeleteSaveFile();
 
     // ---- Navigation ------------------------------------------------------
 

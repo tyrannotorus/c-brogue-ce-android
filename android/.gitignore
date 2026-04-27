@@ -7,7 +7,6 @@ keystore.properties
 .idea/
 .cxx/
 
-# Per-environment secrets — templates (.env.*.template) are tracked, real
-# values are not. See app/build.gradle.kts for how these are consumed.
-.env.staging
-.env.production
+# Staging secrets — .env.template is tracked, real values are not.
+# See app/build.gradle.kts for how this is consumed.
+.env

@@ -26,6 +26,8 @@
 #include "GlobalsBase.h"
 #include "Globals.h"
 #include "platform.h"
+#include "tiles.h"
+#include <SDL.h>
 #include <time.h>
 
 #define MENU_FLAME_PRECISION_FACTOR     10
@@ -145,6 +147,12 @@ static void titleAntiAlias(unsigned char mask[TITLE_COLS][ROWS]) {
     }
 }
 
+static signed short flameState[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)][3];
+static signed short flameColorSources[TITLE_FLAME_COLOR_SOURCE_COUNT][4];
+static const color *flameColors[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)];
+static color flameColorStorage[TITLE_COLS];
+static unsigned char flameMask[TITLE_COLS][ROWS];
+
 static void initializeTitleFlames(boolean includeTitle,
                                   const color *colors[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)],
                                   color colorStorage[TITLE_COLS],
@@ -195,7 +203,7 @@ static void initializeTitleFlames(boolean includeTitle,
     brogueAssert(colorSourceCount <= TITLE_FLAME_COLOR_SOURCE_COUNT);
 
     for (i = 0; i < 100; i++)
-        updateTitleFlames(colors, colorSources, flames);
+        updateTitleFlames(flameColors, flameColorSources, flameState);
 }
 
 // Set by the Java start menu callback (via android-touch.c JNI).
@@ -206,14 +214,33 @@ volatile enum NGCommands startMenuChoice = NG_NOTHING;
 // this and unwinds to Phase 1 (title flames) when set.
 volatile boolean startMenuCancelled = false;
 
-static void titleMenu() {
-    // Static to avoid stack overflow — these are large for the wider grid
-    static signed short flames[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)][3];
-    static signed short colorSources[TITLE_FLAME_COLOR_SOURCE_COUNT][4];
-    static const color *colors[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)];
-    static color colorStorage[TITLE_COLS];
-    static unsigned char mask[TITLE_COLS][ROWS];
+void deathFlameLoop(volatile boolean *dismissed) {
+    setRenderMode(RENDER_TITLE);
+    seedRandomGenerator(0);
+    initializeTitleFlames(false, flameColors, flameColorStorage,
+                          flameColorSources, flameState, flameMask);
+    // Shift flame palette to deep reds with crimson/orange variation.
+    for (int i = 0; i < TITLE_COLS; i++) {
+        short grad = smoothHiliteGradient(i, TITLE_COLS - 1);
+        flameColorStorage[i].red       = 30 + grad / 5;
+        flameColorStorage[i].green     = 2 + grad / 20;
+        flameColorStorage[i].blue      = 0;
+        flameColorStorage[i].redRand   = 55;
+        flameColorStorage[i].greenRand = 12;
+        flameColorStorage[i].blueRand  = 3;
+    }
+    drawTitleFlames(flameState, flameMask);
+    updateScreen();
+    androidDeathFlamesReady();
+    while (!*dismissed) {
+        updateTitleFlames(flameColors, flameColorSources, flameState);
+        drawTitleFlames(flameState, flameMask);
+        updateScreen();
+        SDL_Delay(MENU_FLAME_UPDATE_DELAY);
+    }
+}
 
+static void titleMenu() {
     rogueEvent theEvent;
 
     androidSetOverlayVisible(false);
@@ -229,7 +256,7 @@ static void titleMenu() {
     // them back to Phase 1 until they actually pick a game to start.
     while (rogue.nextGame == NG_NOTHING) {
         // --- Phase 1: Title screen with BROGUE text --- //
-        initializeTitleFlames(true, colors, colorStorage, colorSources, flames, mask);
+        initializeTitleFlames(true, flameColors, flameColorStorage, flameColorSources, flameState, flameMask);
 
         boolean tapped = false;
         // Exit Phase 1 early if the Java side already has a start-menu choice
@@ -237,8 +264,8 @@ static void titleMenu() {
         // cancelling a native prompt, before tapping through the title).
         while (!tapped && startMenuChoice == NG_NOTHING) {
             if (isApplicationActive()) {
-                updateTitleFlames(colors, colorSources, flames);
-                drawTitleFlames(flames, mask);
+                updateTitleFlames(flameColors, flameColorSources, flameState);
+                drawTitleFlames(flameState, flameMask);
                 if (pauseBrogue(MENU_FLAME_UPDATE_DELAY, (PauseBehavior){.interuptForMouseMove = true})) {
                     nextBrogueEvent(&theEvent, true, false, true);
                     tapped = true;
@@ -249,7 +276,7 @@ static void titleMenu() {
         }
 
         // --- Phase 2: Start menu over flames (no title text) --- //
-        initializeTitleFlames(false, colors, colorStorage, colorSources, flames, mask);
+        initializeTitleFlames(false, flameColors, flameColorStorage, flameColorSources, flameState, flameMask);
 
         boolean hasSave = androidSaveFileExists();
         boolean saveCompat = hasSave ? androidSaveIsCompatible() : false;
@@ -261,8 +288,8 @@ static void titleMenu() {
 
         while (rogue.nextGame == NG_NOTHING && !startMenuCancelled) {
             if (isApplicationActive()) {
-                updateTitleFlames(colors, colorSources, flames);
-                drawTitleFlames(flames, mask);
+                updateTitleFlames(flameColors, flameColorSources, flameState);
+                drawTitleFlames(flameState, flameMask);
                 if (pauseBrogue(MENU_FLAME_UPDATE_DELAY, (PauseBehavior){.interuptForMouseMove = true})) {
                     nextBrogueEvent(&theEvent, true, false, true);
                 }

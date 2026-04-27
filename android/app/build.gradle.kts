@@ -40,11 +40,9 @@ val keystoreProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-// Reads a single KEY=value from a gitignored .env file at the Android
-// project root. Fails the build if the file or the key is missing — the
-// templates (.env.staging.template, .env.production.template) advertise what's
-// expected; a missing value must never silently fall back to empty so the
-// staging URL can't slip into a release build.
+// Hardcoded so F-Droid (which can't read gitignored files or repo secrets) builds reproducibly.
+val productionApiBaseUrl = "https://werewolf.camp/brogue-api"
+
 fun envValue(envFile: String, key: String): String {
     val f = rootProject.file(envFile)
     if (!f.exists()) {
@@ -56,8 +54,18 @@ fun envValue(envFile: String, key: String): String {
         .map { it.trim() }
         .firstOrNull { it.startsWith("$key=") }
         ?: throw GradleException("Missing key '$key' in $envFile")
-    return line.substringAfter("=").trim()
+    val value = line.substringAfter("=").trim()
+    if (value.isBlank()) {
+        throw GradleException("Empty value for '$key' in $envFile")
+    }
+    return value
 }
+
+// Configure the staging variant only when .env exists OR a staging task is invoked.
+// Lets `assembleRelease` and unrelated gradle commands run without .env present, while
+// `assembleStaging` fails with a clear "Missing .env..." error from envValue().
+val stagingRequested = gradle.startParameter.taskNames.any { it.contains("staging", ignoreCase = true) }
+val configureStaging = rootProject.file(".env").exists() || stagingRequested
 
 android {
     namespace = "org.broguece.game"
@@ -121,37 +129,25 @@ android {
         buildConfig = true
     }
 
-    // Two and only two variants:
-    //   assembleStaging → debuggable, reads .env.staging
-    //   assembleRelease → production,  reads .env.production
-    // The default `debug` variant is filtered out below so it can't be built
-    // or shipped without an .env injected.
     buildTypes {
-        create("staging") {
-            initWith(getByName("debug"))
-            isDebuggable = true
-            isJniDebuggable = true
-            signingConfig = signingConfigs.getByName("debug")
-            // Read .env.staging when present; fall back to an empty URL
-            // when missing. The variant is disabled further down in that
-            // case (see `beforeVariants`), so this value never lands in a
-            // shipped APK — it exists only because AGP evaluates the
-            // buildType block eagerly during configuration.
-            val stagingUrl = if (rootProject.file(".env.staging").exists())
-                envValue(".env.staging", "API_BASE_URL")
-            else ""
-            buildConfigField("String", "API_BASE_URL", "\"$stagingUrl\"")
-            // Library modules don't define our `staging` type — fall back to
-            // their `debug` when Gradle resolves dependency variants.
-            matchingFallbacks += listOf("debug")
+        if (configureStaging) {
+            create("staging") {
+                initWith(getByName("debug"))
+                isDebuggable = true
+                isJniDebuggable = true
+                signingConfig = signingConfigs.getByName("debug")
+                buildConfigField(
+                    "String", "API_BASE_URL",
+                    "\"${envValue(".env", "API_STAGING_URL")}\""
+                )
+                // Library modules don't define `staging` — fall back to `debug`.
+                matchingFallbacks += listOf("debug")
+            }
         }
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
-            buildConfigField(
-                "String", "API_BASE_URL",
-                "\"${envValue(".env.production", "API_BASE_URL")}\""
-            )
+            buildConfigField("String", "API_BASE_URL", "\"$productionApiBaseUrl\"")
         }
     }
 
@@ -168,37 +164,19 @@ android {
     }
 }
 
-// Hide the default `debug` variant — AGP always creates it, but we don't want
-// it bought into: a plain `assembleDebug` would ship without any .env injected
-// at all. Forcing the choice between Staging and Release keeps the IP-leak
-// guard rail honest.
-//
-// Also disable the `staging` variant when `.env.staging` is absent (the
-// GitHub release CI only ships .env.production). This avoids forcing CI
-// to fabricate a placeholder `.env.staging` just to satisfy configuration-
-// phase validation.
-val stagingEnvFile = rootProject.file(".env.staging")
+// Disable AGP's auto-created `debug` variant — force staging or release.
 androidComponents {
     beforeVariants(selector().withBuildType("debug")) { variant ->
         variant.enable = false
     }
-    if (!stagingEnvFile.exists()) {
-        beforeVariants(selector().withBuildType("staging")) { variant ->
-            variant.enable = false
-        }
-    }
 }
 
-// Staging's network-security config is generated from .env.staging so the
-// host never lives in tracked source. Release uses src/release/res/xml.
+// Staging's network-security config is generated so the host never lives in tracked source.
 androidComponents {
     onVariants(selector().withBuildType("staging")) { variant ->
-        // Skip when the staging variant is disabled (no .env.staging present).
-        if (!stagingEnvFile.exists()) return@onVariants
-
-        val envUrl = envValue(".env.staging", "API_BASE_URL")
+        val envUrl = envValue(".env", "API_STAGING_URL")
         val hostValue = URI(envUrl).host
-            ?: throw GradleException("API_BASE_URL in .env.staging has no host component: $envUrl")
+            ?: throw GradleException("API_STAGING_URL in .env has no host component: $envUrl")
 
         val genTask = tasks.register<GenerateNetworkSecurityConfigTask>(
             "generate${variant.name.replaceFirstChar { it.uppercase() }}NetworkSecurityConfig"
@@ -214,7 +192,5 @@ androidComponents {
 }
 
 dependencies {
-    // Pull-to-refresh on the Play Seeds modal. AndroidX is already enabled in
-    // gradle.properties; this is Google's own library, ~200KB on wire.
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }
