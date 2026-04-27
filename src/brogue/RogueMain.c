@@ -1053,12 +1053,9 @@ void freeEverything() {
 }
 
 void gameOver(char *killedBy, boolean useCustomPhrasing) {
-    short i, y;
     char buf[200], highScoreText[200], buf2[200];
     rogueHighScoresEntry theEntry;
     boolean playback;
-    rogueEvent theEvent;
-    item *theItem;
     char recordingFilename[BROGUE_FILENAME_MAX] = {0};
 
     if (player.bookkeepingFlags & MB_IS_DYING) {
@@ -1069,6 +1066,7 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
     player.bookkeepingFlags |= MB_IS_DYING;
     rogue.autoPlayingLevel = false;
     rogue.gameInProgress = false;
+    androidHideGameUI();
     enterModalMode();
     flushBufferToFile();
 
@@ -1088,37 +1086,11 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
         if (!D_IMMORTAL && !nonInteractivePlayback) {
             rogue.playbackMode = false;
         }
-        strcpy(buf, "You die...");
-        if (KEYBOARD_LABELS) {
-            encodeMessageColor(buf, strlen(buf), &gray);
-            strcat(buf, " (press 'i' to view your inventory)");
-        }
-        player.currentHP = 0; // So it shows up empty in the side bar.
+        player.currentHP = 0;
         refreshSideBar(-1, -1, false);
-        messageWithColor(buf, &badMessageColor, 0);
-        displayMoreSignWithoutWaitingForAcknowledgment();
-
-        do {
-            if (rogue.playbackMode) break;
-            nextBrogueEvent(&theEvent, false, false, false);
-            if (theEvent.eventType == KEYSTROKE
-                && theEvent.param1 != ACKNOWLEDGE_KEY
-                && theEvent.param1 != ESCAPE_KEY
-                && theEvent.param1 != INVENTORY_KEY) {
-
-                flashTemporaryAlert(" -- Press space or click to continue, or press 'i' to view inventory -- ", 1500);
-            } else if (theEvent.eventType == KEYSTROKE && theEvent.param1 == INVENTORY_KEY) {
-                for (theItem = packItems->nextItem; theItem != NULL; theItem = theItem->nextItem) {
-                    identify(theItem);
-                    theItem->flags &= ~ITEM_MAGIC_DETECTED;
-                }
-                displayInventory(ALL_ITEMS, 0, 0, true, false);
-            }
-        } while (!(theEvent.eventType == KEYSTROKE && (theEvent.param1 == ACKNOWLEDGE_KEY || theEvent.param1 == ESCAPE_KEY)
-                   || theEvent.eventType == MOUSE_UP));
-
+        messageWithColor("You die...", &badMessageColor, 0);
+        displayMoreSign();
         confirmMessages();
-
         rogue.playbackMode = playback;
     }
 
@@ -1142,9 +1114,6 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
 
     if (rogue.quit) {
         blackOutScreen();
-    } else {
-        screenDisplayBuffer dbuf = dungeonDisplayBuffer;
-        funkyFade(&dbuf, &black, 0, 120, mapToWindowX(player.loc.x), mapToWindowY(player.loc.y), false);
     }
 
     if (useCustomPhrasing) {
@@ -1176,20 +1145,9 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
     strcpy(theEntry.description, highScoreText);
 
     if (!rogue.quit) {
-        printString(buf, (COLS - strLenWithoutEscapes(buf)) / 2, ROWS / 2, &gray, &black, 0);
-
-        y = ROWS / 2 + 3;
-        for (i = 0; i < gameConst->numberFeats; i++) {
-            if (rogue.featRecord[i]
-                && !featTable[i].initialValue) {
-
-                sprintf(buf, "%s: %s", featTable[i].name, featTable[i].description);
-                printString(buf, (COLS - strLenWithoutEscapes(buf)) / 2, y, &advancementMessageColor, &black, 0);
-                y++;
-            }
-        }
-
-        displayMoreSign();
+        androidShowDeathScreen(buf, (int)rogue.playerTurnNumber);
+        deathFlameLoop(&deathScreenDismissed);
+        blackOutScreen();
     }
 
     if (!rogue.playbackMode) {

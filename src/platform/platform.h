@@ -107,9 +107,12 @@ void updateTitleScreenTile(int row, int column, enum displayGlyph glyph,
     short foreRed, short foreGreen, short foreBlue,
     short backRed, short backGreen, short backBlue);
 void androidSetOverlayVisible(boolean visible);
+void androidHideGameUI(void);
 void androidSetLoadingVisible(boolean visible);
 void androidSetRestoringVisible(boolean visible);
 void androidApplySettings(void);
+void deathFlameLoop(volatile boolean *dismissed);
+void androidDeathFlamesReady(void);
 
 enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL, RENDER_LOADING };
 void setRenderMode(enum RenderMode mode);

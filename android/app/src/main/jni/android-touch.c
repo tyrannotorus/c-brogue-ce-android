@@ -73,6 +73,16 @@ void androidSetOverlayVisible(boolean visible) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+void androidHideGameUI(void) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "hideGameUI", "()V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
 void androidSetLoadingVisible(boolean visible) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
@@ -310,6 +320,64 @@ Java_org_broguece_game_BrogueActivity_nativeTextInputResult(
     textInputReady = true;
     pthread_cond_signal(&textInputCond);
     pthread_mutex_unlock(&textInputMutex);
+}
+
+/* ---- Death screen (two-phase: fade then flames+modal) ---- */
+
+static pthread_mutex_t deathMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  deathCond  = PTHREAD_COND_INITIALIZER;
+static boolean deathFadeDone = false;
+volatile boolean deathScreenDismissed = false;
+
+void androidShowDeathScreen(const char *description, int turns) {
+    pthread_mutex_lock(&deathMutex);
+    deathFadeDone = false;
+    deathScreenDismissed = false;
+    pthread_mutex_unlock(&deathMutex);
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "showDeathScreen",
+        "(Ljava/lang/String;I)V");
+    if (mid) {
+        jstring jdesc = (*env)->NewStringUTF(env, description ? description : "");
+        (*env)->CallVoidMethod(env, activity, mid, jdesc, (jint)turns);
+        (*env)->DeleteLocalRef(env, jdesc);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+
+    pthread_mutex_lock(&deathMutex);
+    while (!deathFadeDone) {
+        pthread_cond_wait(&deathCond, &deathMutex);
+    }
+    pthread_mutex_unlock(&deathMutex);
+}
+
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeDeathFadeDone(
+        JNIEnv *env, jobject thiz) {
+    pthread_mutex_lock(&deathMutex);
+    deathFadeDone = true;
+    pthread_cond_signal(&deathCond);
+    pthread_mutex_unlock(&deathMutex);
+}
+
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeDeathScreenDismissed(
+        JNIEnv *env, jobject thiz) {
+    deathScreenDismissed = true;
+}
+
+void androidDeathFlamesReady(void) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onDeathFlamesReady", "()V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
 }
 
 float androidZoomLevel = 2.0f;

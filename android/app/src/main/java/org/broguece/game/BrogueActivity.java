@@ -40,6 +40,7 @@ public class BrogueActivity extends SDLActivity {
     final WeeklySeedModal weeklySeedModal = new WeeklySeedModal(this);
     final NewGameSeedModal newGameSeedModal = new NewGameSeedModal(this);
     final ReplayRecentSeedModal replayRecentSeedModal = new ReplayRecentSeedModal(this);
+    final DeathModal deathModal = new DeathModal(this);
     private SettingsPanel settingsPanel;
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
@@ -160,6 +161,17 @@ public class BrogueActivity extends SDLActivity {
         reportGameEnd("died", depth, turns);
     }
 
+    public void showDeathScreen(String description, int turns) {
+        deathModal.show(description, turns);
+    }
+
+    public native void nativeDeathFadeDone();
+    public native void nativeDeathScreenDismissed();
+
+    public void onDeathFlamesReady() {
+        deathModal.onFlamesReady();
+    }
+
     public void onPlayerWon(final boolean superVictory, final int depth, final int turns) {
         StatsStore.get(this).recordPlayerWon(superVictory, depth, turns);
         reportGameEnd("won", depth, turns);
@@ -176,6 +188,17 @@ public class BrogueActivity extends SDLActivity {
         currentSeedValid = false;
     }
 
+    public void hideGameUI() {
+        final java.util.concurrent.CountDownLatch latch =
+            new java.util.concurrent.CountDownLatch(1);
+        runOnUiThread(() -> {
+            gameOverlay.setVisibility(View.GONE);
+            inventoryOverlay.setVisibility(View.GONE);
+            latch.countDown();
+        });
+        try { latch.await(); } catch (InterruptedException ignored) {}
+    }
+
     public void setOverlayVisible(final boolean visible) {
         android.util.Log.d("BrogueModal", "setOverlayVisible(" + visible + ")");
         runOnUiThread(() -> {
@@ -189,6 +212,7 @@ public class BrogueActivity extends SDLActivity {
                 // flame loop, so restoring here puts the modal back up
                 // immediately instead of making the user tap through flames.
                 modalStack.restore();
+                deathModal.fadeOutOverlay();
             }
             gameOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
         });
