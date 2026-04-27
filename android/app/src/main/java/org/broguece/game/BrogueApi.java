@@ -25,9 +25,9 @@ import java.util.function.Consumer;
  *  null on any failure and leave UI presentation entirely up to the caller. */
 final class BrogueApi {
 
-    // Injected at build time from .env.staging (assembleStaging) or
-    // .env.production (assembleRelease). See BuildConfig.API_BASE_URL and
-    // the `buildTypes` block in app/build.gradle.kts.
+    // Injected at build time: assembleStaging reads API_STAGING_URL from .env,
+    // assembleRelease uses the hardcoded production URL. See `buildTypes` in
+    // app/build.gradle.kts.
     private static final String BASE_URL = BuildConfig.API_BASE_URL;
 
     private static final int CONNECT_TIMEOUT_MS     = 5000;

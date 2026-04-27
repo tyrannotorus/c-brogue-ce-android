@@ -40,6 +40,9 @@ val keystoreProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Hardcoded so F-Droid (which can't read gitignored files or repo secrets) builds reproducibly.
+val productionApiBaseUrl = "https://werewolf.camp/brogue-api"
+
 fun envValue(envFile: String, key: String): String {
     val f = rootProject.file(envFile)
     if (!f.exists()) {
@@ -51,21 +54,18 @@ fun envValue(envFile: String, key: String): String {
         .map { it.trim() }
         .firstOrNull { it.startsWith("$key=") }
         ?: throw GradleException("Missing key '$key' in $envFile")
-    return line.substringAfter("=").trim()
+    val value = line.substringAfter("=").trim()
+    if (value.isBlank()) {
+        throw GradleException("Empty value for '$key' in $envFile")
+    }
+    return value
 }
 
-fun resolveApiBaseUrl(envFile: String, default: String?): String {
-    val resolved = if (rootProject.file(envFile).exists())
-        envValue(envFile, "API_BASE_URL")
-    else
-        default
-    if (resolved.isNullOrBlank()) {
-        throw GradleException(
-            "API_BASE_URL not set for $envFile — create $envFile with API_BASE_URL=..."
-        )
-    }
-    return resolved
-}
+// Configure the staging variant only when .env exists OR a staging task is invoked.
+// Lets `assembleRelease` and unrelated gradle commands run without .env present, while
+// `assembleStaging` fails with a clear "Missing .env..." error from envValue().
+val stagingRequested = gradle.startParameter.taskNames.any { it.contains("staging", ignoreCase = true) }
+val configureStaging = rootProject.file(".env").exists() || stagingRequested
 
 android {
     namespace = "org.broguece.game"
@@ -130,8 +130,7 @@ android {
     }
 
     buildTypes {
-        // Only created when .env.staging exists.
-        if (rootProject.file(".env.staging").exists()) {
+        if (configureStaging) {
             create("staging") {
                 initWith(getByName("debug"))
                 isDebuggable = true
@@ -139,7 +138,7 @@ android {
                 signingConfig = signingConfigs.getByName("debug")
                 buildConfigField(
                     "String", "API_BASE_URL",
-                    "\"${resolveApiBaseUrl(".env.staging", null)}\""
+                    "\"${envValue(".env", "API_STAGING_URL")}\""
                 )
                 // Library modules don't define `staging` — fall back to `debug`.
                 matchingFallbacks += listOf("debug")
@@ -148,11 +147,7 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
-            // Default, overridden by .env.production if present.
-            buildConfigField(
-                "String", "API_BASE_URL",
-                "\"${resolveApiBaseUrl(".env.production", "https://werewolf.camp/brogue-api")}\""
-            )
+            buildConfigField("String", "API_BASE_URL", "\"$productionApiBaseUrl\"")
         }
     }
 
@@ -179,9 +174,9 @@ androidComponents {
 // Staging's network-security config is generated so the host never lives in tracked source.
 androidComponents {
     onVariants(selector().withBuildType("staging")) { variant ->
-        val envUrl = envValue(".env.staging", "API_BASE_URL")
+        val envUrl = envValue(".env", "API_STAGING_URL")
         val hostValue = URI(envUrl).host
-            ?: throw GradleException("API_BASE_URL in .env.staging has no host component: $envUrl")
+            ?: throw GradleException("API_STAGING_URL in .env has no host component: $envUrl")
 
         val genTask = tasks.register<GenerateNetworkSecurityConfigTask>(
             "generate${variant.name.replaceFirstChar { it.uppercase() }}NetworkSecurityConfig"
