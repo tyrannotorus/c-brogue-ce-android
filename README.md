@@ -16,12 +16,12 @@ You may play it. It is unsupported. Pull requests welcome.
 
 ### Screenshots:
 
-![Screenshot_20260323_201423_Brogue CE](https://github.com/user-attachments/assets/281b4ae6-6d50-456d-9471-6492a44f94d1)
-
-![Screenshot_20260323_201537_Brogue CE](https://github.com/user-attachments/assets/e8f7780e-d3c8-4f26-9532-354069f86d1c)
-
-![Screenshot_20260325_172922_Brogue CE](https://github.com/user-attachments/assets/98802c15-6f99-4b3e-8fac-86b3b8691b02)
-
+<img width="2340" height="1080" alt="Screenshot_20260428_203516_Brogue CE Android" src="https://github.com/user-attachments/assets/d0604f40-c2ac-4687-8975-8fb0a19c0231" />
+<img width="2340" height="1080" alt="Screenshot_20260428_202838_Brogue CE Android" src="https://github.com/user-attachments/assets/dd20d48d-201d-4022-b19f-062a5349c7bd" />
+<img width="2340" height="1080" alt="Screenshot_20260428_202723_Brogue CE Android" src="https://github.com/user-attachments/assets/c6b89f44-46d7-4242-b9f6-4a92e5e77347" />
+<img width="2340" height="1080" alt="Screenshot_20260428_202550_Brogue CE Android" src="https://github.com/user-attachments/assets/bf6ae647-1be6-470c-8172-5f5ec94860f9" />
+<img width="2340" height="1080" alt="Screenshot_20260428_202531_Brogue CE Android" src="https://github.com/user-attachments/assets/5ac54dfb-925f-419c-9e4f-f9e99b61abb2" />
+<img width="2340" height="1080" alt="Screenshot_20260428_202506_Brogue CE Android" src="https://github.com/user-attachments/assets/02d7cbad-9421-4754-b96c-03be73f282d4" />
 
 Brogue CE
 =========
