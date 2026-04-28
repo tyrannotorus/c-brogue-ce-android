@@ -132,12 +132,25 @@ public class BrogueActivity extends SDLActivity {
     private long currentSeed;
     private boolean currentSeedValid;
 
+    // Set by StartMenu's Resume button immediately before the JNI hop into
+    // NG_OPEN_GAME. Read-and-cleared on the next onGameStart so resumes can
+    // be told apart from fresh runs without threading a flag through C.
+    boolean nextGameIsResume;
+
     public void onGameStart(long seed) {
         currentSeed = seed;
         currentSeedValid = true;
-        StatsStore.get(this).recordGameStart();
-        StatsStore.get(this).recordSeedPlayed(seed);
-        api.gameStart(seed);
+        boolean isResume = nextGameIsResume;
+        nextGameIsResume = false;
+        if (isResume) {
+            // Resuming continues an already-counted run — no new "play" on
+            // either server (seeds.plays) or local Personal Stats.
+            api.gameResume(seed);
+        } else {
+            StatsStore.get(this).recordGameStart();
+            StatsStore.get(this).recordSeedPlayed(seed);
+            api.gameStart(seed);
+        }
     }
 
     public void onMonsterKilled(final String monsterName) {

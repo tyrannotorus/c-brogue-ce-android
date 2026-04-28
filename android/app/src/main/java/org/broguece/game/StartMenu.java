@@ -92,11 +92,14 @@ final class StartMenu {
                 v -> activity.newGameSeedModal.show());
 
             // Resume Game is a direct engine call — no modal. Disabled when
-            // there's no save, or the save predates a version bump.
+            // there's no save, or the save predates a version bump. The
+            // nextGameIsResume flag tells onGameStart to route this lifecycle
+            // event to /game/resume (no plays bump) instead of /game/start.
             boolean canResume = hasSave && saveCompatible;
             addButton(panel, "Resume Game", canResume, v -> {
                 activity.modalStack.clear();
                 dismiss();
+                activity.nextGameIsResume = true;
                 activity.nativeStartMenuResult(CHOICE_RESUME);
             });
 
