@@ -41,6 +41,7 @@ final class BrogueApi {
     private static final String PATH_FUN         = "/fun";
     private static final String PATH_SEED_PREFIX = "/seed/";
     private static final String PATH_GAME_START  = "/game/start";
+    private static final String PATH_GAME_RESUME = "/game/resume";
     private static final String PATH_GAME_END    = "/game/end";
 
     private final BrogueActivity activity;
@@ -106,6 +107,20 @@ final class BrogueApi {
             body.put("seed", String.valueOf(seed));
             body.put("appVersion", appVersionString());
             postFireAndForget(PATH_GAME_START, body);
+        } catch (Exception ignored) { }
+    }
+
+    /** Resume of a saved run. Same shape as gameStart but the server does not
+     *  bump seeds.plays — resuming is a continuation of an already-counted run. */
+    void gameResume(long seed) {
+        String did = deviceId();
+        if (did == null) return;
+        try {
+            JSONObject body = new JSONObject();
+            body.put("installId", did);
+            body.put("seed", String.valueOf(seed));
+            body.put("appVersion", appVersionString());
+            postFireAndForget(PATH_GAME_RESUME, body);
         } catch (Exception ignored) { }
     }
 
