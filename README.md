@@ -145,3 +145,7 @@ well play-tested.
 
 
 [releases]: https://github.com/tmewett/BrogueCE/releases
+
+### LICENSE
+
+[![AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](https://spdx.org/licenses/AGPL-3.0-or-later.html)
