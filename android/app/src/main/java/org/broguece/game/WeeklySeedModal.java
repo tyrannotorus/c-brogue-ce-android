@@ -52,6 +52,7 @@ final class WeeklySeedModal extends SeedDetailsModal {
             applyFetchedData(prefetched);
             return;
         }
+        if (!activity.api.isServerEnabled()) return;
         if (!activity.api.hasInternetCapability()) return;
         final int myId = nextRequestId();
         activity.api.fetchWeekly(obj -> {

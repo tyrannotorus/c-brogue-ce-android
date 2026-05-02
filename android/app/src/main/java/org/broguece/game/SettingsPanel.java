@@ -87,6 +87,8 @@ final class SettingsPanel {
         // Game-state toggles — sendChar notifies the engine of the change.
         addGameToggle(panel, "Hide Color Effects", "hide_color_effects", '\\');
         addGameToggle(panel, "Display Stealth Range", "display_stealth_range", ']');
+        addAppToggle(panel, "Enable Server", "server_enabled",
+            v -> activity.communityModal.clearCache());
         addGraphicsModeCycler(panel);
 
         addSeparator(panel);
@@ -260,6 +262,25 @@ final class SettingsPanel {
             GameSettings.setBool(activity, prefKey, nowOn);
             updateCheckIndicator(check, nowOn);
             KeyInput.sendChar(activity, gameKey);
+        });
+    }
+
+    /** Java-only toggle (no engine notification). {@code onChange} fires after
+     *  the new value is persisted, with the new boolean state. */
+    private void addAppToggle(LinearLayout panel, String label, String prefKey,
+                              java.util.function.Consumer<Boolean> onChange) {
+        LinearLayout row = addRow(panel, label);
+
+        boolean on = GameSettings.getBool(activity, prefKey);
+        TextView check = makeCheckIndicator(on);
+        row.addView(check, new LinearLayout.LayoutParams(
+            activity.dpToPx(28), activity.dpToPx(28)));
+
+        row.setOnClickListener(v -> {
+            boolean nowOn = !GameSettings.getBool(activity, prefKey);
+            GameSettings.setBool(activity, prefKey, nowOn);
+            updateCheckIndicator(check, nowOn);
+            if (onChange != null) onChange.accept(nowOn);
         });
     }
 

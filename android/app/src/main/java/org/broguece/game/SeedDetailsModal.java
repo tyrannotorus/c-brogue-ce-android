@@ -23,7 +23,7 @@ import org.json.JSONObject;
  *  to the fetched values; description falls back to "No Description Yet". */
 class SeedDetailsModal {
 
-    static final long TWEEN_MS = 700;
+    static final long TWEEN_MS = 400;
     private static final String STAT_PENDING = "-";
     /** Shown only when a fetch *succeeds* with a null/empty description —
      *  "this seed has no curator description yet". Never shown during a
@@ -167,6 +167,7 @@ class SeedDetailsModal {
         resetStatsToPending();
         applyDescriptionPreFetch();
         if (seed <= 0) return;
+        if (!activity.api.isServerEnabled()) return;
         if (!activity.api.hasInternetCapability()) return;
         final int myId = ++latestRequestId;
         activity.api.fetchSeed(seed, obj -> {
