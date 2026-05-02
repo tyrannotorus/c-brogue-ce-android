@@ -66,6 +66,13 @@ final class BrogueApi {
         return a.equals(b) ? a : null;
     }
 
+    /** Master opt-in for any contact with the backend. Off by default — F-Droid
+     *  builds must make zero network calls to our server until the user enables
+     *  it. Every public network method on this class checks this first. */
+    boolean isServerEnabled() {
+        return GameSettings.getBool(activity, "server_enabled");
+    }
+
     /** True when the device reports an active network with INTERNET capability.
      *  Wrapped in try/catch because ConnectivityManager throws SecurityException
      *  when ACCESS_NETWORK_STATE isn't granted — we'd rather optimistically
@@ -97,6 +104,7 @@ final class BrogueApi {
     // ---- High-level telemetry calls ----
 
     void gameStart(long seed) {
+        if (!isServerEnabled()) return;
         String did = deviceId();
         if (did == null) return;
         try {
@@ -113,6 +121,7 @@ final class BrogueApi {
     /** Resume of a saved run. Same shape as gameStart but the server does not
      *  bump seeds.plays — resuming is a continuation of an already-counted run. */
     void gameResume(long seed) {
+        if (!isServerEnabled()) return;
         String did = deviceId();
         if (did == null) return;
         try {
@@ -126,6 +135,7 @@ final class BrogueApi {
 
     /** outcome: "died", "won", or "quit" — matches the server's OutcomeEn. */
     void gameEnd(long seed, String outcome, int depth, int turns) {
+        if (!isServerEnabled()) return;
         String did = deviceId();
         if (did == null) return;
         try {
@@ -144,6 +154,7 @@ final class BrogueApi {
      *  number is all the client needs — WeeklySeedModal then hits /seed/:seed
      *  for description + stats via {@link #fetchSeed}. */
     void fetchWeekly(Consumer<JSONObject> onResult) {
+        if (!isServerEnabled()) return;
         getJson(PATH_WEEKLY, JSONObject::new, onResult);
     }
 
@@ -151,6 +162,7 @@ final class BrogueApi {
      *  {@code {seed, description}}; per-seed stats arrive via
      *  {@link #fetchSeed} when a row is tapped. */
     void fetchFun(Consumer<JSONArray> onResult) {
+        if (!isServerEnabled()) return;
         getJson(PATH_FUN, JSONArray::new, onResult);
     }
 
@@ -158,6 +170,7 @@ final class BrogueApi {
      *  {description, plays, deaths, wins}; unknown seeds come back with zeros
      *  and null description. Callback runs on the UI thread; null on failure. */
     void fetchSeed(long seed, Consumer<JSONObject> onResult) {
+        if (!isServerEnabled()) return;
         getJson(PATH_SEED_PREFIX + seed, JSONObject::new, onResult);
     }
 

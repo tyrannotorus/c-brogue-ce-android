@@ -50,8 +50,16 @@ final class CommunityModal {
         this.activity = activity;
     }
 
+    /** Server-enabled users go straight to the full community list; opted-out
+     *  users hit the gate modal first. The gate either opts in and continues
+     *  to the list, or cancels back to the title menu. Personal Stats lives
+     *  inside the list overlay so it's behind the gate too. */
     void show() {
-        activity.modalStack.push(this::buildListOverlay);
+        if (activity.api.isServerEnabled()) {
+            activity.modalStack.push(this::buildListOverlay);
+        } else {
+            activity.modalStack.push(this::buildGateOverlay);
+        }
     }
 
     void clearCache() {
@@ -79,7 +87,8 @@ final class CommunityModal {
 
         LinearLayout panel = ModalChrome.buildPanel(activity, root, "COMMUNITY");
 
-        // Your Stats — local-only, stored in the app's private files dir.
+        // Personal Stats — local-only, but lives behind the gate so opt-out
+        // users never reach this overlay.
         addSectionHeader(panel, "Personal Stats",
             "See how your runs have fared.", null);
         StartMenu.addButton(panel, "View Stats", true,
@@ -141,6 +150,139 @@ final class CommunityModal {
         }
 
         return root;
+    }
+
+    /** Opt-in gate. Shown in place of the list overlay when the server is
+     *  disabled. Enable swaps this layer for the list overlay; Cancel pops
+     *  back to the title menu. Body content (intro, bullets, privacy
+     *  callout) sells the trade and the buttons are the only actions. */
+    private View buildGateOverlay() {
+        FrameLayout root = new FrameLayout(activity);
+        LinearLayout panel = ModalChrome.buildPanel(activity, root,
+            "COMMUNITY FEATURES");
+
+        TextView intro = new TextView(activity);
+        intro.setText("Enable connection to the community server to:");
+        intro.setTextColor(Palette.GHOST_WHITE);
+        intro.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        intro.setTypeface(Typeface.MONOSPACE);
+        intro.setPadding(activity.dpToPx(4), activity.dpToPx(2),
+                         activity.dpToPx(4), activity.dpToPx(8));
+        panel.addView(intro);
+
+        addFeatureBullet(panel, "Play Weekly Contests");
+        addFeatureBullet(panel, "Play fan-submitted seeds");
+        addFeatureBullet(panel, "Contribute per-seed game stats");
+
+        // Compact privacy + reassurance, single inline line — full bordered
+        // callout is too tall on phones and pushed the buttons off-screen.
+        TextView privacy = new TextView(activity);
+        privacy.setText("No account required. Your device id is used "
+            + "serverside as a unique identifier in coalescing game stats "
+            + "for seeds. Disable any time in the Settings.");
+        privacy.setTextColor(Palette.PALE_BLUE);
+        privacy.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        privacy.setTypeface(Typeface.MONOSPACE);
+        privacy.setLineSpacing(activity.dpToPx(1), 1f);
+        privacy.setPadding(activity.dpToPx(8), activity.dpToPx(10),
+                           activity.dpToPx(8), activity.dpToPx(12));
+        panel.addView(privacy);
+
+        addGateButtonRow(panel,
+            v -> activity.modalStack.pop(),
+            v -> {
+                GameSettings.setBool(activity, "server_enabled", true);
+                activity.modalStack.pop();
+                activity.modalStack.push(this::buildListOverlay);
+            });
+
+        ModalChrome.present(activity, root, panel);
+        return root;
+    }
+
+    /** Inline Cancel + Enable. Enable wears the GOOD_MAGIC accent (Brogue's
+     *  positive-action lavender) so the affirmative tap is the obvious one. */
+    private void addGateButtonRow(LinearLayout panel,
+                                  View.OnClickListener onCancel,
+                                  View.OnClickListener onEnable) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        View cancel = makeGateButton("Cancel", false, onCancel);
+        View enable = makeGateButton("Enable", true,  onEnable);
+
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        cp.setMargins(0, 0, activity.dpToPx(4), 0);
+        row.addView(cancel, cp);
+
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        ep.setMargins(activity.dpToPx(4), 0, 0, 0);
+        row.addView(enable, ep);
+
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        rp.setMargins(0, activity.dpToPx(4), 0, activity.dpToPx(2));
+        panel.addView(row, rp);
+    }
+
+    private View makeGateButton(String label, boolean highlighted,
+                                View.OnClickListener listener) {
+        LinearLayout btn = new LinearLayout(activity);
+        btn.setOrientation(LinearLayout.HORIZONTAL);
+        btn.setGravity(Gravity.CENTER);
+        btn.setMinimumHeight(activity.dpToPx(44));
+        btn.setPadding(activity.dpToPx(12), activity.dpToPx(10),
+                       activity.dpToPx(12), activity.dpToPx(10));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(activity.dpToPx(3));
+        bg.setColor(Palette.ACTION_BG);
+        bg.setStroke(1, highlighted ? Palette.GOOD_MAGIC : Palette.BORDER_DIM);
+        btn.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(Palette.RIPPLE_GLOW), bg, null));
+
+        TextView t = new TextView(activity);
+        t.setText(label);
+        t.setTextColor(highlighted ? Palette.GOOD_MAGIC : Palette.GHOST_WHITE);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        t.setTypeface(Typeface.MONOSPACE, highlighted ? Typeface.BOLD : Typeface.NORMAL);
+        if (highlighted) t.setLetterSpacing(0.06f);
+        btn.addView(t);
+
+        btn.setOnClickListener(listener);
+        return btn;
+    }
+
+    private void addFeatureBullet(LinearLayout panel, String text) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(activity.dpToPx(8), activity.dpToPx(3),
+                       activity.dpToPx(4), activity.dpToPx(3));
+
+        TextView mark = new TextView(activity);
+        mark.setText("◆"); // ◆
+        mark.setTextColor(Palette.FLAME_EMBER);
+        mark.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        mark.setTypeface(Typeface.MONOSPACE);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT);
+        mp.setMargins(0, activity.dpToPx(1), activity.dpToPx(10), 0);
+        row.addView(mark, mp);
+
+        TextView label = new TextView(activity);
+        label.setText(text);
+        label.setTextColor(Palette.GHOST_WHITE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        label.setTypeface(Typeface.MONOSPACE);
+        row.addView(label, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        panel.addView(row);
     }
 
     // ---- State rendering ----
