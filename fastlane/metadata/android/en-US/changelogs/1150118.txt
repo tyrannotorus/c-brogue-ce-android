@@ -1,0 +1,1 @@
+- Server features can now be opted in or out
