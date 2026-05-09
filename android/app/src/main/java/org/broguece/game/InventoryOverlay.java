@@ -88,8 +88,10 @@ final class InventoryOverlay {
                 scrollView.setBackground(panelBg);
 
                 TextView header = new TextView(activity);
+                // 26 = a–z inventory letter cap (MAX_PACK_ITEMS in the engine).
+                String inventoryHeader = "INVENTORY ( " + items.length() + " / 26 )";
                 header.setText(selectMode && !prompt.isEmpty() ? prompt
-                    : selectMode ? "SELECT ITEM" : "INVENTORY");
+                    : selectMode ? "SELECT ITEM" : inventoryHeader);
                 header.setTextColor(selectMode ? Palette.PALE_BLUE : Palette.FLAME_EMBER);
                 header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
                 header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);

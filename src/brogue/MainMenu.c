@@ -48,19 +48,13 @@
 
 static void drawTitleFlames(signed short flames[TITLE_COLS][(ROWS + MENU_FLAME_ROW_PADDING)][3],
                             unsigned char mask[TITLE_COLS][ROWS]) {
-    short i, j, versionStringLength;
+    short i, j;
     color tempColor = {0};
     const color *maskColor = &black;
 
-    versionStringLength = strLenWithoutEscapes(gameConst->versionString);
-
     for (j = 0; j < ROWS; j++) {
         for (i = 0; i < TITLE_COLS; i++) {
-            char dchar;
-            if (j == ROWS - 1 && i >= TITLE_COLS - versionStringLength)
-                dchar = gameConst->versionString[i - (TITLE_COLS - versionStringLength)];
-            else
-                dchar = ' ';
+            char dchar = ' ';
 
             if (mask[i][j] == 100) {
                 updateTitleScreenTile(j, i, dchar, 10, 10, 10, 0, 0, 0);
