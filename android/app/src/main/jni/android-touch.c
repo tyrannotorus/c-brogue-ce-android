@@ -8,11 +8,9 @@
  *
  * Gesture map:
  *   Tap              → MOUSE_DOWN + MOUSE_UP  (left click at cell)
- *   Long press       → RIGHT_MOUSE_DOWN       (examine / interact)
  *   Long press+drag  → MOUSE_ENTERED_CELL     (inspect / pathfind highlight)
  *   Swipe            → KEYSTROKE arrow key     (8-directional movement)
  *   Pinch            → resize window           (zoom)
- *   Two-finger tap   → KEYSTROKE ESCAPE_KEY    (cancel / back)
  */
 
 #include <SDL.h>
@@ -29,7 +27,6 @@
 #define SWIPE_THRESHOLD_PX     40   /* min distance to register a swipe */
 #define LONG_PRESS_MS         400   /* hold time for inspect mode */
 #define TAP_MAX_MOVE_PX        20   /* max drift before a tap becomes a drag */
-#define TWO_FINGER_TAP_MS     200   /* max duration for a two-finger tap */
 
 /* ---- Internal state ---- */
 
@@ -568,33 +565,20 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             Uint32 elapsed = event->tfinger.timestamp - startTime;
             float moved = dist(startX, startY, px, py);
 
-            if (moved <= TAP_MAX_MOVE_PX) {
-                if (elapsed >= LONG_PRESS_MS) {
-                    /* Long press → right click (examine) */
-                    int cx, cy;
-                    cellFromPixel(startX, startY, &cx, &cy);
-                    out->eventType = RIGHT_MOUSE_DOWN;
-                    out->param1 = cx;
-                    out->param2 = cy;
-                    out->shiftKey = false;
-                    out->controlKey = false;
-                    state = TOUCH_IDLE;
-                    return true;
-                } else {
-                    /* Short tap → left click (down now, up queued) */
-                    int cx, cy;
-                    cellFromPixel(startX, startY, &cx, &cy);
-                    out->eventType = MOUSE_DOWN;
-                    out->param1 = cx;
-                    out->param2 = cy;
-                    out->shiftKey = false;
-                    out->controlKey = false;
-                    pendingMouseUp = true;
-                    pendingUpX = cx;
-                    pendingUpY = cy;
-                    state = TOUCH_IDLE;
-                    return true;
-                }
+            if (moved <= TAP_MAX_MOVE_PX && elapsed < LONG_PRESS_MS) {
+                /* Tap → left click (down now, up queued) */
+                int cx, cy;
+                cellFromPixel(startX, startY, &cx, &cy);
+                out->eventType = MOUSE_DOWN;
+                out->param1 = cx;
+                out->param2 = cy;
+                out->shiftKey = false;
+                out->controlKey = false;
+                pendingMouseUp = true;
+                pendingUpX = cx;
+                pendingUpY = cy;
+                state = TOUCH_IDLE;
+                return true;
             }
             state = TOUCH_IDLE;
             return false;
@@ -636,20 +620,6 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
 
         if (state == TOUCH_TWO_FINGER) {
             androidPanOverride = false;
-            Uint32 elapsed = event->tfinger.timestamp - startTime;
-            float pinchDelta = fabsf(androidZoomLevel - zoomAtPinchStart);
-
-            /* Short two-finger tap (no significant zoom) → escape */
-            if (elapsed <= TWO_FINGER_TAP_MS && pinchDelta < 0.05f) {
-                out->eventType = KEYSTROKE;
-                out->param1 = ESCAPE_KEY;
-                out->param2 = 0;
-                out->shiftKey = false;
-                out->controlKey = false;
-                state = TOUCH_IDLE;
-                return true;
-            }
-
             state = TOUCH_IDLE;
             return false;
         }

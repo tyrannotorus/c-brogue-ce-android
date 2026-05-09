@@ -77,8 +77,11 @@ final class AboutModal {
             "Brogue: Community Edition",
             "tmewett and the Brogue CE contributors",
             "https://github.com/tmewett/BrogueCE");
+        String androidPortTitle = "staging".equals(BuildConfig.BUILD_TYPE)
+            ? "Android Port staging"
+            : "Android Port " + BuildConfig.VERSION_NAME;
         addCredit(panel,
-            "Android Port",
+            androidPortTitle,
             "werewolf.camp",
             "https://werewolf.camp");
 
