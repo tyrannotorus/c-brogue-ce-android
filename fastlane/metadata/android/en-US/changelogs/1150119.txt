@@ -1,0 +1,3 @@
+- New app icon and adaptive icon
+- Inventory header shows item count (X / 26)
+- Long-press examine and two-finger tap-to-escape gestures removed
