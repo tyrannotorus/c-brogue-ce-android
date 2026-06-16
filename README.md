@@ -13,6 +13,9 @@ You may play it. It is unsupported. Pull requests welcome.
 ### APK Releases:
 - Get them here!
   https://github.com/tyrannotorus/c-brogue-ce-android/releases
+  
+### Dev Disclaimer:
+While I am an experienced developer, note this is a personal-use project that's been human-directed as far as top-down architecture but 100% slop-coded. Thus beware when forking. Here be dragons.
 
 ### Screenshots:
 
