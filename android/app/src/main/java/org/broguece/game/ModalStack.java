@@ -4,7 +4,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 
-/** Stack of layered title-screen overlays (Credits, Community, Custom Seed, ...)
+/** Stack of layered title-screen overlays (About, Extras, Custom Seed, ...)
  *  rendered above the engine-owned start menu. Each push captures a builder so
  *  the modal can be rebuilt after a C round-trip — e.g. cancelling the native
  *  seed prompt bounces us back through showStartMenu; on re-entry we restore

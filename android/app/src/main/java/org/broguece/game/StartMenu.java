@@ -14,10 +14,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Title-screen start menu: "New Game", "Resume Game", "Community",
- *  "Credits". Shown by the engine via showStartMenu() and dismissed when the
+/** Title-screen start menu: "New Game", "Resume Game", "Extras",
+ *  "About". Shown by the engine via showStartMenu() and dismissed when the
  *  user chooses a path. Button-row styling is exposed statically so modals
- *  layered over the start menu (e.g. {@link CommunityModal} and the
+ *  layered over the start menu (e.g. {@link ExtrasModal} and the
  *  SeedDetailsModal family) can reuse the exact visual style. */
 final class StartMenu {
 
@@ -103,9 +103,9 @@ final class StartMenu {
                 activity.nativeStartMenuResult(CHOICE_RESUME);
             });
 
-            addButton(panel, "Community", true,
-                v -> activity.communityModal.show());
-            addButton(panel, "Credits", true,
+            addButton(panel, "Extras", true,
+                v -> activity.extrasModal.show());
+            addButton(panel, "About", true,
                 v -> activity.aboutModal.show());
 
             int panelWidth = Math.min(activity.dpToPx(300),

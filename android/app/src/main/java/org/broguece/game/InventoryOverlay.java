@@ -14,6 +14,7 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -87,6 +88,10 @@ final class InventoryOverlay {
                 panelBg.setStroke(1, Palette.BORDER_DIM);
                 scrollView.setBackground(panelBg);
 
+                LinearLayout headerBar = new LinearLayout(activity);
+                headerBar.setOrientation(LinearLayout.HORIZONTAL);
+                headerBar.setGravity(Gravity.CENTER_VERTICAL);
+
                 TextView header = new TextView(activity);
                 // 26 = a–z inventory letter cap (MAX_PACK_ITEMS in the engine).
                 String inventoryHeader = "INVENTORY ( " + items.length() + " / 26 )";
@@ -97,7 +102,17 @@ final class InventoryOverlay {
                 header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
                 header.setLetterSpacing(0.15f);
                 header.setPadding(activity.dpToPx(4), activity.dpToPx(2), 0, activity.dpToPx(4));
-                panel.addView(header);
+                headerBar.addView(header, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+                // Eye icon → read-only Discovered Items (engine maps 'D' to it
+                // while the inventory loop is active).
+                ImageButton discoveriesBtn = makeHeaderIcon(R.drawable.ic_visibility,
+                    "View discovered items");
+                discoveriesBtn.setOnClickListener(v -> KeyInput.sendChar(activity, 'D'));
+                headerBar.addView(discoveriesBtn);
+
+                panel.addView(headerBar);
 
                 View headerSep = new View(activity);
                 GradientDrawable sepGrad = new GradientDrawable(
@@ -398,10 +413,36 @@ final class InventoryOverlay {
         return row;
     }
 
+    private ImageButton makeHeaderIcon(int drawableRes, String contentDesc) {
+        ImageButton btn = new ImageButton(activity);
+        btn.setImageResource(drawableRes);
+        btn.setColorFilter(Palette.PALE_BLUE);
+        btn.setScaleType(ImageButton.ScaleType.CENTER_INSIDE);
+        btn.setBackground(null);
+        btn.setStateListAnimator(null);
+        btn.setElevation(0);
+        btn.setContentDescription(contentDesc);
+        int size = activity.dpToPx(36);
+        btn.setMinimumWidth(size);
+        btn.setMinimumHeight(size);
+        int p = activity.dpToPx(6);
+        btn.setPadding(p, p, p, p);
+        btn.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(60).start();
+            } else if (e.getAction() == MotionEvent.ACTION_UP
+                    || e.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+            }
+            return false;
+        });
+        return btn;
+    }
+
     private void addMagicIndicator(LinearLayout row, int magicPolarity) {
         if (magicPolarity == 0) return;
         TextView v = new TextView(activity);
-        v.setText(magicPolarity > 0 ? "\u29F3" : "\u29F2");
+        v.setText(magicPolarity > 0 ? Palette.GOOD_MAGIC_GLYPH : Palette.BAD_MAGIC_GLYPH);
         v.setTextColor(magicPolarity > 0 ? Palette.GOOD_MAGIC : Palette.BAD_MAGIC);
         v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         v.setTypeface(Typeface.MONOSPACE);

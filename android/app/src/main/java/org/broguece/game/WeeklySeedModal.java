@@ -5,7 +5,7 @@ import org.json.JSONObject;
 /** Weekly contest branch: renders the current-week seed with its date in
  *  place of the seed number and a fixed r/brogueforum blurb as the
  *  description. Data comes from /weekly (same shape as /seed/:seed plus
- *  the seed itself); CommunityModal prefetches it on open so the common
+ *  the seed itself); ExtrasModal prefetches it on open so the common
  *  path opens this modal with zero network calls. The no-arg fallback
  *  fetches /weekly itself if the prefetch missed. */
 final class WeeklySeedModal extends SeedDetailsModal {
@@ -20,7 +20,7 @@ final class WeeklySeedModal extends SeedDetailsModal {
 
     WeeklySeedModal(BrogueActivity activity) { super(activity); }
 
-    /** Preferred entry point: data fetched by CommunityModal and handed
+    /** Preferred entry point: data fetched by ExtrasModal and handed
      *  straight through. No network calls happen on modal open. */
     void show(JSONObject prefetched) {
         this.prefetched = prefetched;
@@ -28,7 +28,7 @@ final class WeeklySeedModal extends SeedDetailsModal {
         activity.modalStack.push(this::buildOverlay);
     }
 
-    /** Fallback when no prefetch is available (CommunityModal's /weekly
+    /** Fallback when no prefetch is available (ExtrasModal's /weekly
      *  failed, or modal opened from somewhere that doesn't prefetch). */
     void show() {
         this.prefetched = null;

@@ -13,7 +13,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Credits overlay, layered above the start menu via the modal stack. */
+/** About overlay, layered above the start menu via the modal stack. */
 final class AboutModal {
 
     private final BrogueActivity activity;
@@ -50,7 +50,7 @@ final class AboutModal {
         panel.setElevation(activity.dpToPx(12));
 
         TextView header = new TextView(activity);
-        header.setText("CREDITS");
+        header.setText("ABOUT");
         header.setTextColor(Palette.FLAME_EMBER);
         header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         header.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);

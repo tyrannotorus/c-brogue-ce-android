@@ -2998,6 +2998,20 @@ char displayInventory(unsigned short categoryMask,
             break;
         }
 
+        if (key == DISCOVERIES_KEY && !rogue.playbackMode) {
+            // Eye icon in the inventory header → read-only Discovered Items.
+            // displayDiscoveries returns INVENTORY_KEY to come back here, or
+            // ESCAPE_KEY to dismiss the whole inventory.
+            androidHideInventory();
+            if (displayDiscoveries() != INVENTORY_KEY) {
+                break;
+            }
+            androidShowInventory(json);
+            waitingForAction = false;
+            theItem = NULL;
+            continue;
+        }
+
         if (!waitingForAction) {
             // First keypress: item selection (inventory letter a-z).
             for (i = 0; i < itemNumber; i++) {
@@ -3060,6 +3074,95 @@ char displayInventory(unsigned short categoryMask,
     }
     restoreRNG;
     return theKey;
+}
+
+// Read-only Discovered Items screen, reached from the eye icon in the native
+// inventory header. Mirrors the data the old printDiscoveriesScreen() drew:
+// every item kind per category, flagged identified or not, with the good/bad
+// magic suffix and the spawn-probability among the still-unidentified kinds.
+// Returns INVENTORY_KEY if the player tapped the inventory icon to go back, or
+// ESCAPE_KEY if they dismissed the screen.
+char displayDiscoveries(void) {
+    const struct {
+        const char *label;
+        enum itemCategory category;
+        short count;
+    } sections[] = {
+        {"SCROLLS", SCROLL, gameConst->numberScrollKinds},
+        {"POTIONS", POTION, gameConst->numberPotionKinds},
+        {"WANDS",   WAND,   gameConst->numberWandKinds},
+        {"STAFFS",  STAFF,  NUMBER_STAFF_KINDS},
+        {"RINGS",   RING,   NUMBER_RING_KINDS},
+    };
+    const int sectionCount = sizeof(sections) / sizeof(sections[0]);
+
+    char json[16384];
+    int pos = 0;
+    pos += snprintf(json, sizeof(json), "{\"sections\":[");
+
+    for (int s = 0; s < sectionCount; s++) {
+        itemTable *theTable = tableForItemCategory(sections[s].category);
+        short count = sections[s].count;
+
+        // Probability denominator: total spawn frequency of kinds not yet found.
+        short totalFrequency = 0;
+        for (short i = 0; i < count; i++) {
+            if (!theTable[i].identified) {
+                totalFrequency += theTable[i].frequency;
+            }
+        }
+
+        pos += snprintf(json + pos, sizeof(json) - pos,
+            "%s{\"label\":\"%s\",\"items\":[", (s > 0 ? "," : ""), sections[s].label);
+
+        for (short i = 0; i < count; i++) {
+            char nameUpper[COLS];
+            strncpy(nameUpper, theTable[i].name, sizeof(nameUpper) - 1);
+            nameUpper[sizeof(nameUpper) - 1] = '\0';
+            upperCase(nameUpper);
+            char nameEsc[COLS * 2];
+            jsonEscape(nameEsc, nameUpper, sizeof(nameEsc));
+
+            boolean identified = theTable[i].identified;
+            int polarity = 0, pct = 0;
+            if (!identified) {
+                polarity = magicCharDiscoverySuffix(sections[s].category, i);
+                if (theTable[i].frequency > 0 && totalFrequency > 0) {
+                    pct = theTable[i].frequency * 100 / totalFrequency;
+                }
+            }
+
+            pos += snprintf(json + pos, sizeof(json) - pos,
+                "%s{\"name\":\"%s\",\"identified\":%s,\"polarity\":%d,\"pct\":%d}",
+                (i > 0 ? "," : ""), nameEsc,
+                identified ? "true" : "false", polarity, pct);
+        }
+
+        pos += snprintf(json + pos, sizeof(json) - pos, "]}");
+    }
+    pos += snprintf(json + pos, sizeof(json) - pos, "]}");
+
+    androidShowDiscoveries(json);
+
+    // Wait for the inventory icon (go back), or any dismiss (close).
+    rogueEvent theEvent;
+    char result = ESCAPE_KEY;
+    while (1) {
+        nextBrogueEvent(&theEvent, true, false, false);
+        if (theEvent.eventType != KEYSTROKE) {
+            continue;
+        }
+        if (theEvent.param1 == INVENTORY_KEY) {
+            result = INVENTORY_KEY;
+            break;
+        }
+        if (theEvent.param1 == ESCAPE_KEY) {
+            break;
+        }
+    }
+
+    androidHideDiscoveries();
+    return result;
 }
 
 short numberOfMatchingPackItems(unsigned short categoryMask,

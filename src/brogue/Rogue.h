@@ -2971,7 +2971,7 @@ extern "C" {
     void refreshSideBar(short focusX, short focusY, boolean focusedEntityMustGoFirst);
     void printHelpScreen(void);
     void displayFeatsScreen(void);
-    void printDiscoveriesScreen(void);
+    char displayDiscoveries(void);
     void printHighScores(boolean hiliteMostRecent);
     void displayGrid(short **map);
     void printSeed(void);

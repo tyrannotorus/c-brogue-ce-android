@@ -26,11 +26,11 @@ public class BrogueActivity extends SDLActivity {
     private View loadingOverlay;
 
     // Feature classes. Package-private so other features can reference them
-    // directly (e.g. StartMenu → communityModal.show()).
+    // directly (e.g. StartMenu → extrasModal.show()).
     final BrogueApi api = new BrogueApi(this);
     final ModalStack modalStack = new ModalStack(this);
     final AboutModal aboutModal = new AboutModal(this);
-    final CommunityModal communityModal = new CommunityModal(this);
+    final ExtrasModal extrasModal = new ExtrasModal(this);
     final PlayerStatsModal playerStatsModal = new PlayerStatsModal(this);
     final StartMenu startMenu = new StartMenu(this);
     // Seed-details modal family — all inherit from SeedDetailsModal and
@@ -45,6 +45,7 @@ public class BrogueActivity extends SDLActivity {
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
     private InventoryOverlay inventoryRenderer;
+    private DiscoveriesOverlay discoveriesRenderer;
     TextInputDialog textInputDialog;
     private AchievementToast achievementToast;
 
@@ -74,6 +75,7 @@ public class BrogueActivity extends SDLActivity {
         settingsPanel = new SettingsPanel(this, inventoryOverlay);
         exitPanel = new ExitPanel(this, inventoryOverlay);
         inventoryRenderer = new InventoryOverlay(this, inventoryOverlay);
+        discoveriesRenderer = new DiscoveriesOverlay(this, inventoryOverlay);
         textInputDialog = new TextInputDialog(this);
 
         actionsToolbar = new ActionsToolbar(this, gameOverlay, inventoryOverlay,
@@ -114,6 +116,14 @@ public class BrogueActivity extends SDLActivity {
 
     public void hideInventory() {
         inventoryRenderer.hide();
+    }
+
+    public void showDiscoveries(final String json) {
+        discoveriesRenderer.show(json);
+    }
+
+    public void hideDiscoveries() {
+        discoveriesRenderer.hide();
     }
 
     public void showTextInputDialog(final String prompt, final String defaultText,

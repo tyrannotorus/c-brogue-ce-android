@@ -25,6 +25,10 @@ final class Palette {
     static final int GOOD_MAGIC     = Color.argb(255, 153, 128, 255); // Brogue {60,50,100}
     static final int BAD_MAGIC      = Color.argb(255, 255, 128, 153); // Brogue {100,50,60}
 
+    // Good/bad magic indicator glyphs (Brogue's G_GOOD_MAGIC / G_BAD_MAGIC).
+    static final String GOOD_MAGIC_GLYPH = new String(Character.toChars(0x29F3));
+    static final String BAD_MAGIC_GLYPH  = new String(Character.toChars(0x29F2));
+
     static final int DISABLED_BG    = Color.argb(100, 15, 13, 30);
     static final int DISABLED_TEXT  = Color.argb(100, 100, 95, 110);
 
