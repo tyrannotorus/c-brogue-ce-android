@@ -76,8 +76,8 @@ android {
         applicationId = "org.broguece.game"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1150119
-        versionName = "1.15.1.19"
+        versionCode = 1150120
+        versionName = "1.15.1.20"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
