@@ -12,7 +12,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Static chrome helpers shared by the seed-family modals (Community, Custom Seed,
+/** Static chrome helpers shared by the seed-family modals (Extras, Custom Seed,
  *  Seed Detail). No state; each call takes the {@link BrogueActivity}. */
 final class ModalChrome {
 

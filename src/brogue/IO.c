@@ -331,22 +331,15 @@ static short actionMenu(short x, boolean playingBack) {
         }
         buttons[buttonCount].hotkey[0] = FEATS_KEY;
         buttonCount++;
-        if (KEYBOARD_LABELS) {
-            sprintf(buttons[buttonCount].text, "  %sD: %sDiscovered items  ",   yellowColorEscape, whiteColorEscape);
-        } else {
-            strcpy(buttons[buttonCount].text, "  Discovered items  ");
-        }
-        buttons[buttonCount].hotkey[0] = DISCOVERIES_KEY;
         DEBUG {
-            buttonCount++;
             if (KEYBOARD_LABELS) {
                 sprintf(buttons[buttonCount].text, "  %sC: %sCreate item or monster  ", yellowColorEscape, whiteColorEscape);
             } else {
                 strcpy(buttons[buttonCount].text, "  Create item or monster  ");
             }
             buttons[buttonCount].hotkey[0] = CREATE_ITEM_MONSTER_KEY;
+            buttonCount++;
         }
-        buttonCount++;
         if (KEYBOARD_LABELS) {
             sprintf(buttons[buttonCount].text, "  %s~: %sView dungeon seed  ",  yellowColorEscape, whiteColorEscape);
         } else {
@@ -2719,9 +2712,6 @@ void executeKeystroke(signed long keystroke, boolean controlKey, boolean shiftKe
         case FEATS_KEY:
             displayFeatsScreen();
             break;
-        case DISCOVERIES_KEY:
-            printDiscoveriesScreen();
-            break;
         case CREATE_ITEM_MONSTER_KEY:
             DEBUG {
                 dialogCreateItemOrMonster();
@@ -4178,54 +4168,6 @@ void printHelpScreen() {
     updateMessageDisplay();
 }
 
-static void printDiscoveries(short category, short count, unsigned short itemCharacter, short x, short y, screenDisplayBuffer *dbuf) {
-    color goodColor, badColor;
-    const color *theColor;
-    char buf[COLS], buf2[COLS];
-    short i, magic, totalFrequency;
-    itemTable *theTable = tableForItemCategory(category);
-
-    goodColor = goodMessageColor;
-    applyColorAverage(&goodColor, &black, 50);
-    badColor = badMessageColor;
-    applyColorAverage(&badColor, &black, 50);
-
-    totalFrequency = 0;
-    for (i = 0; i < count; i++) {
-        if (!theTable[i].identified) {
-            totalFrequency += theTable[i].frequency;
-        }
-    }
-
-    for (i = 0; i < count; i++) {
-        if (theTable[i].identified) {
-            theColor = &white;
-            plotCharToBuffer(itemCharacter, (windowpos){ x, y + i }, &itemColor, &black, dbuf);
-        } else {
-            theColor = &darkGray;
-            magic = magicCharDiscoverySuffix(category, i);
-            if (magic == 1) {
-                plotCharToBuffer(G_GOOD_MAGIC, (windowpos){ x, y + i }, &goodColor, &black, dbuf);
-            } else if (magic == -1) {
-                plotCharToBuffer(G_BAD_MAGIC, (windowpos){ x, y + i }, &badColor, &black, dbuf);
-            }
-        }
-        strcpy(buf, theTable[i].name);
-
-        if (!theTable[i].identified
-            && theTable[i].frequency > 0
-            && totalFrequency > 0) {
-
-            sprintf(buf2, " (%i%%)", theTable[i].frequency * 100 / totalFrequency);
-            strcat(buf, buf2);
-        }
-
-        upperCase(buf);
-        strcat(buf, " ");
-        printString(buf, x + 2, y + i, theColor, &black, dbuf);
-    }
-}
-
 /// @brief Display the feats screen. Lists all feats and their achievement status.
 void displayFeatsScreen() {
     char availableColorEscape[5] = "", achievedColorEscape[5] = "", failedColorEscape[5] = "";
@@ -4271,41 +4213,6 @@ void displayFeatsScreen() {
     const SavedDisplayBuffer rbuf = saveDisplayBuffer();
     overlayDisplayBuffer(&dbuf);
     waitForKeystrokeOrMouseClick();
-    restoreDisplayBuffer(&rbuf);
-    exitModalMode();
-}
-
-void printDiscoveriesScreen() {
-    short i, j, y;
-    const SavedDisplayBuffer rbuf = saveDisplayBuffer();
-
-    screenDisplayBuffer dbuf;
-
-    clearDisplayBuffer(&dbuf);
-
-    printString("-- SCROLLS --", mapToWindowX(2), y = mapToWindowY(1), &flavorTextColor, &black, &dbuf);
-    printDiscoveries(SCROLL, gameConst->numberScrollKinds, G_SCROLL, mapToWindowX(3), ++y, &dbuf);
-
-    printString("-- RINGS --", mapToWindowX(2), y += gameConst->numberScrollKinds + 1, &flavorTextColor, &black, &dbuf);
-    printDiscoveries(RING, NUMBER_RING_KINDS, G_RING, mapToWindowX(3), ++y, &dbuf);
-
-    printString("-- POTIONS --", mapToWindowX(29), y = mapToWindowY(1), &flavorTextColor, &black, &dbuf);
-    printDiscoveries(POTION, gameConst->numberPotionKinds, G_POTION, mapToWindowX(30), ++y, &dbuf);
-
-    printString("-- STAFFS --", mapToWindowX(53), y = mapToWindowY(1), &flavorTextColor, &black, &dbuf);
-    printDiscoveries(STAFF, NUMBER_STAFF_KINDS, G_STAFF, mapToWindowX(54), ++y, &dbuf);
-
-    printString("-- WANDS --", mapToWindowX(53), y += NUMBER_STAFF_KINDS + 1, &flavorTextColor, &black, &dbuf);
-    printDiscoveries(WAND, gameConst->numberWandKinds, G_WAND, mapToWindowX(54), ++y, &dbuf);
-
-    printString(KEYBOARD_LABELS ? "-- press any key to continue --" : "-- touch anywhere to continue --",
-                mapToWindowX(20), mapToWindowY(DROWS-2), &itemMessageColor, &black, &dbuf);
-
-    enterModalMode();
-    overlayDisplayBuffer(&dbuf);
-
-    waitForKeystrokeOrMouseClick();
-
     restoreDisplayBuffer(&rbuf);
     exitModalMode();
 }

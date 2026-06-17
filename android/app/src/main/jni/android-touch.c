@@ -170,6 +170,28 @@ void androidHideInventory(void) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+void androidShowDiscoveries(const char *json) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jstring jstr = (*env)->NewStringUTF(env, json);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "showDiscoveries", "(Ljava/lang/String;)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, jstr);
+    (*env)->DeleteLocalRef(env, jstr);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+void androidHideDiscoveries(void) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "hideDiscoveries", "()V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
 /* ---- Get dungeon seed ---- */
 
 JNIEXPORT jlong JNICALL

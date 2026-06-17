@@ -952,7 +952,7 @@ boolean executePlaybackInput(rogueEvent *recordingInput) {
                 return true;
             case DISCOVERIES_KEY:
                 rogue.playbackMode = false;
-                printDiscoveriesScreen();
+                displayDiscoveries();
                 rogue.playbackMode = true;
                 return true;
             case MESSAGE_ARCHIVE_KEY:

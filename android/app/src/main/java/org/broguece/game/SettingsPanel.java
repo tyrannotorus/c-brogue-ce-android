@@ -88,7 +88,7 @@ final class SettingsPanel {
         addGameToggle(panel, "Hide Color Effects", "hide_color_effects", '\\');
         addGameToggle(panel, "Display Stealth Range", "display_stealth_range", ']');
         addAppToggle(panel, "Enable Server", "server_enabled",
-            v -> activity.communityModal.clearCache());
+            v -> activity.extrasModal.clearCache());
         addGraphicsModeCycler(panel);
 
         addSeparator(panel);

@@ -17,7 +17,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Detailed player-stats view, pushed over the Community modal when the user
+/** Detailed player-stats view, pushed over the Extras modal when the user
  *  taps "View Personal Stats". */
 final class PlayerStatsModal {
 

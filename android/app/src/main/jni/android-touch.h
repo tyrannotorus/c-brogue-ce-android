@@ -26,6 +26,11 @@ void androidResetTouchState(void);
 void androidShowInventory(const char *json);
 void androidHideInventory(void);
 
+/* Show/hide the native read-only Discovered Items UI. json is
+ * { "sections": [ { "label", "items": [ { name, identified, polarity, pct } ] } ] }. */
+void androidShowDiscoveries(const char *json);
+void androidHideDiscoveries(void);
+
 /* Show the start menu overlay (New Game / Resume / Play Seed).
  * Non-blocking — the Java callback sets rogue.nextGame when the user picks. */
 void androidShowStartMenu(boolean hasSave, boolean saveCompatible);

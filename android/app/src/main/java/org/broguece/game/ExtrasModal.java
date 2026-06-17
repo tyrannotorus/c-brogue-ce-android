@@ -21,12 +21,12 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Community modal: browse the fun-seed catalog + a static entry point for
+/** Extras modal: browse the fun-seed catalog + a static entry point for
  *  the weekly contest. Weekly discovery (which seed is current) is owned
  *  by {@link WeeklySeedModal}, so this modal only fetches /fun. Tapping a
  *  row pushes a {@link SeedDetailsModal} subclass which fetches its own
  *  /seed/:seed — this modal no longer owns stats rendering. */
-final class CommunityModal {
+final class ExtrasModal {
 
     private static final int FUN_ROW_HEIGHT_DP = 50;
     private static final int FUN_ROWS_MAX      = 10;
@@ -46,7 +46,7 @@ final class CommunityModal {
     private SwipeRefreshLayout swipe;
     private View listRoot;
 
-    CommunityModal(BrogueActivity activity) {
+    ExtrasModal(BrogueActivity activity) {
         this.activity = activity;
     }
 
@@ -85,7 +85,7 @@ final class CommunityModal {
         FrameLayout root = new FrameLayout(activity);
         listRoot = root;
 
-        LinearLayout panel = ModalChrome.buildPanel(activity, root, "COMMUNITY");
+        LinearLayout panel = ModalChrome.buildPanel(activity, root, "EXTRAS");
 
         // Personal Stats — local-only, but lives behind the gate so opt-out
         // users never reach this overlay.
@@ -159,7 +159,7 @@ final class CommunityModal {
     private View buildGateOverlay() {
         FrameLayout root = new FrameLayout(activity);
         LinearLayout panel = ModalChrome.buildPanel(activity, root,
-            "COMMUNITY FEATURES");
+            "EXTRAS");
 
         TextView intro = new TextView(activity);
         intro.setText("Enable connection to the community server to:");
