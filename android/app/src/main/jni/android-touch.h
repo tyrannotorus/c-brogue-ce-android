@@ -48,8 +48,12 @@ extern float androidZoomLevel;
 /* Pan offset in pixels, applied when zoomed in. */
 extern float androidPanX, androidPanY;
 
-/* True while user is two-finger dragging — suppresses auto-center. */
+/* Set during a two-finger drag and held after release — suppresses
+ * auto-center until player movement, a swipe, or a camera snap. */
 extern boolean androidPanOverride;
+
+/* True while two fingers are currently down panning. */
+boolean androidTwoFingerActive(void);
 
 /* When true, snap the camera to the player immediately instead of tweening.
  * Set on game load; consumed after the first frame. */
