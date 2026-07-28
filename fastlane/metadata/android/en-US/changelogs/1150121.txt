@@ -1,0 +1,2 @@
+- Two-finger map pan no longer snaps back on release; the view holds until you move
+- Swiping to reveal the system navigation no longer dismisses the title menu
