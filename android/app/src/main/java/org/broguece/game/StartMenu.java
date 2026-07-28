@@ -7,7 +7,9 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -48,6 +50,33 @@ final class StartMenu {
             backdrop.setOnClickListener(v -> {
                 dismiss();
                 activity.nativeStartMenuCancel();
+            });
+            // Only a genuine tap dismisses — a swipe (e.g. revealing the
+            // system nav bar) or a system-cancelled gesture must not.
+            final int slop = ViewConfiguration.get(activity).getScaledTouchSlop();
+            backdrop.setOnTouchListener(new View.OnTouchListener() {
+                private float downX, downY;
+                private boolean tapping;
+                @Override public boolean onTouch(View v, MotionEvent e) {
+                    switch (e.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                            downX = e.getX(); downY = e.getY();
+                            tapping = true;
+                            break;
+                        case MotionEvent.ACTION_MOVE:
+                            if (Math.abs(e.getX() - downX) > slop
+                                    || Math.abs(e.getY() - downY) > slop) tapping = false;
+                            break;
+                        case MotionEvent.ACTION_POINTER_DOWN:
+                        case MotionEvent.ACTION_CANCEL:
+                            tapping = false;
+                            break;
+                        case MotionEvent.ACTION_UP:
+                            if (tapping) v.performClick();
+                            break;
+                    }
+                    return true;
+                }
             });
             root.addView(backdrop, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,

@@ -815,8 +815,20 @@ void updateScreen() {
     int zoomW = (int)(fitW * effectiveZoom);
     int zoomH = (int)(fitH * effectiveZoom);
 
-    // Auto-center view (suppressed during two-finger drag)
-    if (effectiveZoom > 1.0f && !androidPanOverride) {
+    // Player movement releases a held pan (not while fingers are still down)
+    if (inGame) {
+        static int lastPlayerX = -1, lastPlayerY = -1;
+        if (androidPanOverride && !androidTwoFingerActive()
+                && (player.loc.x != lastPlayerX || player.loc.y != lastPlayerY)) {
+            androidPanOverride = false;
+        }
+        lastPlayerX = player.loc.x;
+        lastPlayerY = player.loc.y;
+    }
+
+    // Auto-center view (suppressed while a two-finger pan is held;
+    // a forced camera snap overrides the held pan)
+    if (effectiveZoom > 1.0f && (!androidPanOverride || androidCameraSnap)) {
         int centerX, centerY;
         if (inGame) {
             centerX = player.loc.x + STAT_BAR_WIDTH + 1;
@@ -831,6 +843,7 @@ void updateScreen() {
             androidPanX = targetPanX;
             androidPanY = targetPanY;
             androidCameraSnap = false;
+            androidPanOverride = false;
         } else {
             androidPanX += (targetPanX - androidPanX) * 0.15f;
             androidPanY += (targetPanY - androidPanY) * 0.15f;

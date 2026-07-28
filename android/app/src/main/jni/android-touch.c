@@ -60,6 +60,10 @@ void androidResetTouchState(void) {
     pendingMouseUp = false;
 }
 
+boolean androidTwoFingerActive(void) {
+    return state == TOUCH_TWO_FINGER;
+}
+
 void androidSetOverlayVisible(boolean visible) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
@@ -612,6 +616,10 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             float dy = py - startY;
 
             if (dist(startX, startY, px, py) >= SWIPE_THRESHOLD_PX) {
+                /* Explicit movement gesture — re-engage camera follow */
+                if (rogue.gameInProgress && getRenderMode() != RENDER_MODAL) {
+                    androidPanOverride = false;
+                }
                 out->eventType = KEYSTROKE;
                 out->param1 = swipeDirectionKey(dx, dy);
                 out->param2 = 0;
@@ -640,12 +648,8 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             return true;
         }
 
-        if (state == TOUCH_TWO_FINGER) {
-            androidPanOverride = false;
-            state = TOUCH_IDLE;
-            return false;
-        }
-
+        /* TOUCH_TWO_FINGER release lands here — androidPanOverride stays set
+         * so the view holds until player movement or a swipe releases it. */
         state = TOUCH_IDLE;
         return false;
     }
