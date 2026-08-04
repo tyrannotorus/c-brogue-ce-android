@@ -126,10 +126,12 @@ final class StartMenu {
             // event to /game/resume (no plays bump) instead of /game/start.
             boolean canResume = hasSave && saveCompatible;
             addButton(panel, "Resume Game", canResume, v -> {
-                activity.modalStack.clear();
-                dismiss();
                 activity.nextGameIsResume = true;
-                activity.nativeStartMenuResult(CHOICE_RESUME);
+                activity.fadeToBlackThen(() -> {
+                    activity.modalStack.clear();
+                    dismiss();
+                    activity.nativeStartMenuResult(CHOICE_RESUME);
+                });
             });
 
             addButton(panel, "Extras", true,

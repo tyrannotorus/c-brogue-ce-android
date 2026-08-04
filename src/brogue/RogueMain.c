@@ -21,6 +21,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <math.h>
+#include <stdarg.h>
 #include "Rogue.h"
 #include "GlobalsBase.h"
 #include "Globals.h"
@@ -28,6 +30,7 @@
 #include "GlobalsRapidBrogue.h"
 #include "GlobalsBulletBrogue.h"
 #include "platform.h"
+#include "tiles.h"
 #include "android-stats.h"
 
 #include <time.h>
@@ -924,6 +927,10 @@ void startLevel(short oldLevelNumber, short stairDirection) {
     displayLevel();
     refreshSideBar(-1, -1, false);
     if (!rogue.playbackMode) {
+        // displayLevel only fills the buffers; paint them before telling the
+        // UI the game is up, or its transition fades in on the title frame.
+        refreshScreen();
+        updateScreen();
         androidSetOverlayVisible(true);
     }
 
@@ -1161,10 +1168,12 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
     if (!rogue.playbackMode) {
         if (!rogue.quit) {
             notifyEvent(GAMEOVER_DEATH, theEntry.score, 0, theEntry.description, recordingFilename);
-            androidNotifyPlayerDied(killedBy, rogue.depthLevel, (int)rogue.playerTurnNumber);
+            androidNotifyPlayerDied(killedBy, rogue.depthLevel, rogue.deepestLevel,
+                                    (int)rogue.playerTurnNumber);
         } else {
             notifyEvent(GAMEOVER_QUIT, theEntry.score, 0, theEntry.description, recordingFilename);
-            androidNotifyPlayerQuit(rogue.depthLevel, (int)rogue.playerTurnNumber);
+            androidNotifyPlayerQuit(rogue.depthLevel, rogue.deepestLevel,
+                                    (int)rogue.playerTurnNumber);
         }
     } else {
         notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");
@@ -1183,18 +1192,30 @@ void gameOver(char *killedBy, boolean useCustomPhrasing) {
     rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
 }
 
+// Appends to a JSON buffer, returning the new offset. snprintf reports the
+// length it would have written, so accumulating it raw can push the offset
+// past the buffer and wrap the remaining-size argument.
+static int jsonAppend(char *buf, int pos, int size, const char *format, ...) {
+    va_list args;
+    int written;
+
+    if (pos >= size - 1) return size - 1;
+    va_start(args, format);
+    written = vsnprintf(buf + pos, size - pos, format, args);
+    va_end(args);
+    return (written < 0 || pos + written >= size) ? size - 1 : pos + written;
+}
+
 void victory(boolean superVictory) {
-    char buf[COLS*3], victoryVerb[20];
+    char buf[COLS*3], esc[COLS*6], victoryVerb[20];
     item *theItem;
-    short i, j, gemCount = 0;
+    short j, gemCount = 0;
     unsigned long totalValue = 0;
     rogueHighScoresEntry theEntry;
-    boolean isPlayback;
-    
+
     char recordingFilename[BROGUE_FILENAME_MAX] = {0};
 
     rogue.gameInProgress = false;
-    enterModalMode();
     flushBufferToFile();
 
     if (rogue.playbackFastForward) {
@@ -1202,94 +1223,123 @@ void victory(boolean superVictory) {
         displayLevel();
     }
 
-    //
-    // First screen - Congratulations...
-    //
-    if (superVictory) {
-        message(    "Light streams through the portal, and you are teleported out of the dungeon.", 0);
-        screenDisplayBuffer dbuf = dungeonDisplayBuffer;
-        funkyFade(&dbuf, &superVictoryColor, 0, 240, mapToWindowX(player.loc.x), mapToWindowY(player.loc.y), false);
-        displayMoreSign();
-        printString("Congratulations; you have transcended the Dungeons of Doom!                 ", mapToWindowX(0), mapToWindowY(-1), &black, &white, 0);
-        displayMoreSign();
-        clearDisplayBuffer(&dbuf);
-        deleteMessages();
-        strcpy(displayedMessage[0], "You retire in splendor, forever renowned for your remarkable triumph.     ");
-    } else {
-        message(    "You are bathed in sunlight as you throw open the heavy doors.", 0);
-        screenDisplayBuffer dbuf = dungeonDisplayBuffer;
-        funkyFade(&dbuf, &white, 0, 240, mapToWindowX(player.loc.x), mapToWindowY(player.loc.y), false);
-        displayMoreSign();
-        printString("Congratulations; you have escaped from the Dungeons of Doom!     ", mapToWindowX(0), mapToWindowY(-1), &black, &white, 0);
-        displayMoreSign();
-        deleteMessages();
-        strcpy(displayedMessage[0], "You sell your treasures and live out your days in fame and glory.");
+    androidHideGameUI();
+
+    // Clear the message rows so no stale text floats over the flood.
+    deleteMessages();
+    updateMessageDisplay();
+
+    // Whiteout radiating from the exit door, drawn by the renderer as a
+    // screen-space overlay above both tile layers so it covers the sidebar
+    // and every other region. Not skippable.
+    if (!nonInteractivePlayback) {
+        setRenderMode(RENDER_VICTORY);
+
+        short **distanceMap = allocGrid();
+        fillGrid(distanceMap, 0);
+        calculateDistances(distanceMap, player.loc.x, player.loc.y, T_OBSTRUCTS_PASSABILITY, 0, true, true);
+
+        int doorC, doorR;
+        dungeonCellToFloodCell(mapToWindowX(player.loc.x), mapToWindowY(player.loc.y), &doorC, &doorR);
+
+        // Screen distance from the door per cell, shortened on reachable
+        // floor so the light rushes along corridors ahead of the walls.
+        int scrW, scrH;
+        getScreenPixelSize(&scrW, &scrH);
+        if (scrW <= 0 || scrH <= 0) { scrW = 16; scrH = 9; }
+        double cellW = (double)scrW / COLS, cellH = (double)scrH / ROWS;
+
+        static double distPx[COLS][ROWS];
+        double maxDist = 1;
+        for (int c = 0; c < COLS; c++) {
+            for (int r = 0; r < ROWS; r++) {
+                double dx = (c - doorC) * cellW, dy = (r - doorR) * cellH;
+                double d = sqrt(dx*dx + dy*dy);
+                if (d > maxDist) maxDist = d;
+
+                int gx, gy;
+                floodCellToDungeonCell(c, r, &gx, &gy);
+                int mx = windowToMapX(gx), my = windowToMapY(gy);
+                if (coordinatesAreInMap(mx, my)
+                    && distanceMap[mx][my] >= 0 && distanceMap[mx][my] < 30000) {
+                    d /= 1.0 + (100.0 - min(100, distanceMap[mx][my])) / 100.;
+                }
+                distPx[c][r] = d;
+            }
+        }
+        freeGrid(distanceMap);
+
+        const double falloff = maxDist * 0.18; // soft leading edge
+        const short steps = 480;
+        for (short n = 0; n <= steps; n++) {
+            double t = (double)n / steps;
+            double front = t * t * (maxDist + falloff); // ease-in
+            for (int c = 0; c < COLS; c++) {
+                for (int r = 0; r < ROWS; r++) {
+                    double w = (front - distPx[c][r]) / falloff * 100;
+                    victoryFloodWeight[r][c] = (short)(w < 0 ? 0 : (w > 100 ? 100 : w));
+                }
+            }
+            if (pauseAnimation(16, PAUSE_BEHAVIOR_DEFAULT)) {
+                rogueEvent theEvent;
+                nextKeyOrMouseEvent(&theEvent, false, false); // discard: not skippable
+            }
+        }
     }
 
-    screenDisplayBuffer dbuf;
-    clearDisplayBuffer(&dbuf);
-
-    //
-    // Second screen - Show inventory and item's value
-    //
-    printString(displayedMessage[0], mapToWindowX(0), mapToWindowY(-1), &white, &black, &dbuf);
-
-    plotCharToBuffer(G_GOLD, mapToWindow((pos){ 2, 1 }), &yellow, &black, &dbuf);
-    printString("Gold", mapToWindowX(4), mapToWindowY(1), &white, &black, &dbuf);
-    sprintf(buf, "%li", rogue.gold);
-    printString(buf, mapToWindowX(60), mapToWindowY(1), &itemMessageColor, &black, &dbuf);
+    // Identify and tally the pack, building the payload for the native
+    // victory sequence.
+    char json[8192];
+    int pos = 0;
+    pos = jsonAppend(json, pos, sizeof(json),
+        "{\"super\":%s,\"headline\":\"%s\",\"congrats\":\"%s\",\"epilogue\":\"%s\","
+        "\"stinger\":\"%s\",\"treasure\":[{\"name\":\"GOLD\",\"value\":%li}",
+        superVictory ? "true" : "false",
+        superVictory ? "Light streams through the portal, and you are teleported out of the dungeon."
+                     : "You are bathed in sunlight as you throw open the heavy doors.",
+        superVictory ? "Congratulations!\\nYou have transcended the Dungeons of Doom!"
+                     : "Congratulations!\\nYou have escaped from the Dungeons of Doom!",
+        superVictory ? "You retire in splendor, forever renowned for your remarkable triumph."
+                     : "You sell your treasures and live out your days in fame and glory.",
+        superVictory ? "As the amulet cools in your grasp,\\n"
+                       "the warden's breath will ever burn upon your neck..."
+                     : "Far below, the warden still creeps...",
+        rogue.gold);
     totalValue += rogue.gold;
 
-    for (i = 4, theItem = packItems->nextItem; theItem != NULL; theItem = theItem->nextItem) {
+    for (theItem = packItems->nextItem; theItem != NULL; theItem = theItem->nextItem) {
+        long value;
         if (theItem->category & GEM) {
             gemCount += theItem->quantity;
         }
         if (theItem->category == AMULET && superVictory) {
-            plotCharToBuffer(G_AMULET, (windowpos){ mapToWindowX(2), min(ROWS-1, i + 1) }, &yellow, &black, &dbuf);
-            printString("The Birthright of Yendor", mapToWindowX(4), min(ROWS-1, i + 1), &itemMessageColor, &black, &dbuf);
-            sprintf(buf, "%li", max(0, itemValue(theItem) * 2));
-            printString(buf, mapToWindowX(60), min(ROWS-1, i + 1), &itemMessageColor, &black, &dbuf);
-            totalValue += max(0, itemValue(theItem) * 2);
-            i++;
+            strcpy(buf, "THE BIRTHRIGHT OF YENDOR");
+            value = max(0, itemValue(theItem) * 2);
         } else {
             identify(theItem);
-            itemName(theItem, buf, true, true, &white);
+            itemName(theItem, buf, true, true, NULL);
             upperCase(buf);
-
-            plotCharToBuffer(theItem->displayChar, (windowpos){ mapToWindowX(2), min(ROWS-1, i + 1) }, &yellow, &black, &dbuf);
-            printString(buf, mapToWindowX(4), min(ROWS-1, i + 1), &white, &black, &dbuf);
-
-            if (itemValue(theItem) > 0) {
-                sprintf(buf, "%li", max(0, itemValue(theItem)));
-                printString(buf, mapToWindowX(60), min(ROWS-1, i + 1), &itemMessageColor, &black, &dbuf);
-            }
-
-            totalValue += max(0, itemValue(theItem));
-            i++;
+            value = max(0, itemValue(theItem));
         }
+        char clean[COLS*3];
+        stripEscapes(clean, buf, sizeof(clean));
+        jsonEscape(esc, clean, sizeof(esc));
+        pos = jsonAppend(json, pos, sizeof(json),
+            ",{\"name\":\"%s\",\"value\":%li}", esc, value);
+        totalValue += value;
     }
-    i++;
-    printString("TOTAL:", mapToWindowX(2), min(ROWS-1, i + 1), &lightBlue, &black, &dbuf);
-    sprintf(buf, "%li", totalValue);
-    printString(buf, mapToWindowX(60), min(ROWS-1, i + 1), &lightBlue, &black, &dbuf);
 
-    funkyFade(&dbuf, &white, 0, 120, COLS/2, ROWS/2, true);
-    displayMoreSign();
+    pos = jsonAppend(json, pos, sizeof(json),
+        "],\"total\":%lu,\"achievements\":[", totalValue);
 
-    //
-    // Third screen - List of achievements with recording save prompt
-    //
-    blackOutScreen();
-
-    i = 4;
-    printString("Achievements", mapToWindowX(2), i++, &lightBlue, &black, NULL);
-
-    i++;
-    for (j = 0; i < ROWS && j < gameConst->numberFeats; j++) {
+    boolean firstFeat = true;
+    for (j = 0; j < gameConst->numberFeats; j++) {
         if (rogue.featRecord[j]) {
             sprintf(buf, "%s: %s", featTable[j].name, featTable[j].description);
-            printString(buf, mapToWindowX(2), i, &advancementMessageColor, &black, NULL);
-            i++;
+            jsonEscape(esc, buf, sizeof(esc));
+            pos = jsonAppend(json, pos, sizeof(json),
+                "%s\"%s\"", firstFeat ? "" : ",", esc);
+            firstFeat = false;
         }
     }
 
@@ -1308,17 +1358,10 @@ void victory(boolean superVictory) {
         theEntry.score /= 10;
     }
 
+    pos = jsonAppend(json, pos, sizeof(json),
+        "],\"score\":%li,\"turns\":%li}", theEntry.score, rogue.playerTurnNumber);
+
     if (rogue.mode != GAME_MODE_WIZARD && !rogue.playbackMode) {
-        saveHighScore(theEntry);
-    }
-
-    isPlayback = rogue.playbackMode;
-    rogue.playbackMode = false;
-    rogue.playbackMode = isPlayback;
-
-    displayMoreSign();
-
-    if (!rogue.playbackMode) {
         saveHighScore(theEntry);
     }
 
@@ -1332,12 +1375,15 @@ void victory(boolean superVictory) {
         } else {
             notifyEvent(GAMEOVER_VICTORY, theEntry.score, 0, theEntry.description, recordingFilename);
         }
-        androidNotifyPlayerWon(superVictory, rogue.depthLevel, (int)rogue.playerTurnNumber);
+        // The ascent decrements depthLevel to 0 before calling in, so the
+        // deepest-depth stat has to come from deepestLevel.
+        androidNotifyPlayerWon(superVictory, rogue.depthLevel, rogue.deepestLevel,
+                               (int)rogue.playerTurnNumber);
     } else {
         notifyEvent(GAMEOVER_RECORDING, 0, 0, "recording ended", "none");
     }
 
-    if (!rogue.playbackMode && rogue.mode != GAME_MODE_EASY && rogue.mode != GAME_MODE_NORMAL) {
+    if (!rogue.playbackMode && rogue.mode != GAME_MODE_EASY && rogue.mode != GAME_MODE_WIZARD) {
         saveRunHistory(victoryVerb, "-", (int) theEntry.score, gemCount);
     }
 
@@ -1345,7 +1391,15 @@ void victory(boolean superVictory) {
         androidDeleteSaveFile();
     }
 
-    exitModalMode();
+    // Blocks until the last page is tapped.
+    if (!nonInteractivePlayback) {
+        androidShowVictorySequence(json);
+        // Replace the lingering white flood frame so no white can show
+        // through during teardown and title entry.
+        setRenderMode(RENDER_LOADING);
+        updateScreen();
+    }
+
     rogue.gameHasEnded = true;
     rogue.gameExitStatusCode = EXIT_STATUS_SUCCESS;
 }

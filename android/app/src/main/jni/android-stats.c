@@ -70,38 +70,41 @@ void androidNotifyAllyDied(const char *monsterName) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
-void androidNotifyPlayerDied(const char *killedBy, int depth, int turns) {
+void androidNotifyPlayerDied(const char *killedBy, int depth, int deepest, int turns) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
     jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerDied",
-                                        "(Ljava/lang/String;II)V");
+                                        "(Ljava/lang/String;III)V");
     if (mid) {
         jstring jcause = (*env)->NewStringUTF(env, killedBy ? killedBy : "");
-        (*env)->CallVoidMethod(env, activity, mid, jcause, (jint)depth, (jint)turns);
+        (*env)->CallVoidMethod(env, activity, mid, jcause, (jint)depth,
+                               (jint)deepest, (jint)turns);
         (*env)->DeleteLocalRef(env, jcause);
     }
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
 }
 
-void androidNotifyPlayerWon(boolean superVictory, int depth, int turns) {
+void androidNotifyPlayerWon(boolean superVictory, int depth, int deepest, int turns) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
-    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerWon", "(ZII)V");
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerWon", "(ZIII)V");
     if (mid) (*env)->CallVoidMethod(env, activity, mid,
-                                    (jboolean)superVictory, (jint)depth, (jint)turns);
+                                    (jboolean)superVictory, (jint)depth,
+                                    (jint)deepest, (jint)turns);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
 }
 
-void androidNotifyPlayerQuit(int depth, int turns) {
+void androidNotifyPlayerQuit(int depth, int deepest, int turns) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
     jclass cls = (*env)->GetObjectClass(env, activity);
-    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerQuit", "(II)V");
-    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jint)depth, (jint)turns);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onPlayerQuit", "(III)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jint)depth,
+                                    (jint)deepest, (jint)turns);
     (*env)->DeleteLocalRef(env, cls);
     (*env)->DeleteLocalRef(env, activity);
 }

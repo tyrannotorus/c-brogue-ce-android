@@ -138,13 +138,14 @@ final class StatsStore {
         post("recordMonsterKilled", s -> s.withMonsterKilled(name));
     }
 
-    void recordPlayerDied(final String killedBy, final int depth, final int turns) {
+    void recordPlayerDied(final String killedBy, final int depth, final int deepest,
+            final int turns) {
         final String safeKilledBy = killedBy == null ? "" : killedBy;
-        post("recordPlayerDied", s -> s.withPlayerDied(safeKilledBy, depth, turns));
+        post("recordPlayerDied", s -> s.withPlayerDied(safeKilledBy, depth, deepest, turns));
     }
 
-    void recordPlayerWon(final boolean superVictory, final int depth, final int turns) {
-        post("recordPlayerWon", s -> s.withPlayerWon(superVictory, depth, turns));
+    void recordPlayerWon(final boolean superVictory, final int deepest, final int turns) {
+        post("recordPlayerWon", s -> s.withPlayerWon(superVictory, deepest, turns));
     }
 
     void recordAmuletPickedUp() {
@@ -156,8 +157,8 @@ final class StatsStore {
         post("recordSeedPlayed", s -> s.withSeedPlayed(seed));
     }
 
-    void recordPlayerQuit() {
-        post("recordPlayerQuit", PlayerStats::withPlayerQuit);
+    void recordPlayerQuit(final int deepest) {
+        post("recordPlayerQuit", s -> s.withPlayerQuit(deepest));
     }
 
     private PlayerStats loadFromDisk() {

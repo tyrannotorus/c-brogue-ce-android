@@ -94,6 +94,16 @@ void androidSetLoadingVisible(boolean visible) {
     (*env)->DeleteLocalRef(env, activity);
 }
 
+void androidSetLoadingProgress(int percent) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "setLoadingProgress", "(I)V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid, (jint)percent);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
 void androidSetRestoringVisible(boolean visible) {
     JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
     jobject activity = (jobject)SDL_AndroidGetActivity();
@@ -391,6 +401,38 @@ JNIEXPORT void JNICALL
 Java_org_broguece_game_BrogueActivity_nativeDeathScreenDismissed(
         JNIEnv *env, jobject thiz) {
     deathScreenDismissed = true;
+}
+
+/* ---- Victory sequence ---- */
+
+static volatile boolean victorySequenceDismissed = false;
+
+// Shows the native paged victory sequence and blocks until dismissed.
+void androidShowVictorySequence(const char *json) {
+    victorySequenceDismissed = false;
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "showVictorySequence",
+        "(Ljava/lang/String;)V");
+    if (mid) {
+        jstring jstr = (*env)->NewStringUTF(env, json);
+        (*env)->CallVoidMethod(env, activity, mid, jstr);
+        (*env)->DeleteLocalRef(env, jstr);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+
+    while (!victorySequenceDismissed) {
+        SDL_Delay(30);
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeVictorySequenceDismissed(
+        JNIEnv *env, jobject thiz) {
+    victorySequenceDismissed = true;
 }
 
 void androidDeathFlamesReady(void) {

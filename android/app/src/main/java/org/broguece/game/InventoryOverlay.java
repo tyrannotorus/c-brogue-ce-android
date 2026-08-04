@@ -93,8 +93,10 @@ final class InventoryOverlay {
                 headerBar.setGravity(Gravity.CENTER_VERTICAL);
 
                 TextView header = new TextView(activity);
-                // 26 = a–z inventory letter cap (MAX_PACK_ITEMS in the engine).
-                String inventoryHeader = "INVENTORY ( " + items.length() + " / 26 )";
+                // The engine counts stacks per-quantity against MAX_PACK_ITEMS,
+                // so packCount can exceed the number of rows shown.
+                int packCount = root.optInt("packCount", items.length());
+                String inventoryHeader = "INVENTORY ( " + packCount + " / 26 )";
                 header.setText(selectMode && !prompt.isEmpty() ? prompt
                     : selectMode ? "SELECT ITEM" : inventoryHeader);
                 header.setTextColor(selectMode ? Palette.PALE_BLUE : Palette.FLAME_EMBER);
