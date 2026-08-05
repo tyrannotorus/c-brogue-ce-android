@@ -109,12 +109,18 @@ void updateTitleScreenTile(int row, int column, enum displayGlyph glyph,
 void androidSetOverlayVisible(boolean visible);
 void androidHideGameUI(void);
 void androidSetLoadingVisible(boolean visible);
+void androidSetLoadingProgress(int percent);
+void androidShowVictorySequence(const char *json);
+extern short victoryFloodWeight[ROWS][COLS];
+void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow);
+void dungeonCellToFloodCell(int col, int row, int *outCol, int *outRow);
+void getScreenPixelSize(int *w, int *h);
 void androidSetRestoringVisible(boolean visible);
 void androidApplySettings(void);
 void deathFlameLoop(volatile boolean *dismissed);
 void androidDeathFlamesReady(void);
 
-enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL, RENDER_LOADING };
+enum RenderMode { RENDER_TITLE, RENDER_GAMEPLAY, RENDER_MODAL, RENDER_LOADING, RENDER_VICTORY };
 void setRenderMode(enum RenderMode mode);
 enum RenderMode getRenderMode(void);
 void enterModalMode(void);

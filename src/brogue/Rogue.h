@@ -3473,6 +3473,8 @@ extern "C" {
     void androidSaveGameAndExit(void);
     void androidAbandonGame(void);
     void androidDeleteSaveFile(void);
+    void stripEscapes(char *dest, const char *src, int maxLen);
+    int jsonEscape(char *dest, const char *src, int maxLen);
     boolean androidSaveFileExists(void);
     boolean androidSaveIsCompatible(void);
     void androidShowStartMenu(boolean hasSave, boolean saveCompatible);

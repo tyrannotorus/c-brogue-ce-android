@@ -27,6 +27,7 @@
 #include "GlobalsBase.h"
 #include "Globals.h"
 #include "platform.h"
+#include "tiles.h"
 
 #define RECORDING_HEADER_LENGTH     36  // bytes at the start of the recording file to store global data
 
@@ -1385,6 +1386,8 @@ void switchToPlaying() {
     refreshSideBar(-1, -1, false);
     updateMessageDisplay();
     displayLevel();
+    refreshScreen();
+    updateScreen();
     androidSetOverlayVisible(true);
 }
 
@@ -1431,6 +1434,7 @@ boolean loadSavedGame() {
             if (recordingLocation / progressBarInterval != previousRecordingLocation / progressBarInterval && !rogue.playbackOOS) {
                 rogue.playbackFastForward = false; // so that pauseBrogue looks for inputs
                 printProgressBar((COLS - 20) / 2, ROWS / 2, "[     Loading...   ]", recordingLocation, lengthOfPlaybackFile, &darkPurple, false);
+                androidSetLoadingProgress((int)((unsigned long long)recordingLocation * 100 / lengthOfPlaybackFile));
                 while (pauseBrogue(0, PAUSE_BEHAVIOR_DEFAULT)) { // pauseBrogue(0) is necessary to flush the display to the window in SDL, as well as look for inputs
                     rogue.creaturesWillFlashThisTurn = false; // prevent monster flashes from showing up on screen
                     nextBrogueEvent(&theEvent, true, false, true);

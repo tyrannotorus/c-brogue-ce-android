@@ -1,0 +1,6 @@
+- Added Victory and Super Victory Endings
+- Starting or resuming a game now fades in instead of cutting
+- Loading a saved game shows a progress percentage
+- Inventory count now matches the pack limit, so stacked items each count
+- Deepest depth now records how far a run reached, including wins
+- Fixed a duplicate high score on winning; wins now appear in run history

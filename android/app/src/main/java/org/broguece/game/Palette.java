@@ -12,6 +12,9 @@ final class Palette {
     static final int FLAME_DIM      = Color.argb(255, 100, 55, 20);  // subdued flame
     static final int PALE_BLUE      = Color.argb(255, 140, 150, 190);// flameTitleColor text
     static final int GHOST_WHITE    = Color.argb(255, 210, 205, 220);
+    static final int GOLD_TEXT      = Color.argb(255, 230, 200, 90);  // treasure values
+    static final int SUNLIT_TEXT    = Color.argb(255, 90, 60, 20);    // dark sepia on the white victory veil
+    static final int SUNLIT_HINT    = Color.argb(150, 90, 60, 20);
     static final int VOID_BLACK     = Color.argb(240, 8, 6, 16);
     static final int SUBMENU_BG     = Color.argb(235, 12, 10, 25);
     static final int RIPPLE_GLOW    = Color.argb(80, 180, 120, 50);

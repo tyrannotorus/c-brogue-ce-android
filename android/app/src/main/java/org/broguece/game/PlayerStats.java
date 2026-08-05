@@ -164,7 +164,9 @@ final class PlayerStats {
             copyDepths(deathsPerDepth));
     }
 
-    PlayerStats withPlayerDied(String killedBy, int depth, int turns) {
+    /** depth is where the player died, which the histogram wants; deepest is
+     *  how far down the run reached, which can be further up the dungeon. */
+    PlayerStats withPlayerDied(String killedBy, int depth, int deepest, int turns) {
         int[] nextDepths = copyDepths(deathsPerDepth);
         if (depth >= 1 && depth <= MAX_DEPTH) {
             nextDepths[depth]++;
@@ -173,7 +175,7 @@ final class PlayerStats {
             gamesPlayed,
             wins, masteryWins,
             deaths + 1,
-            Math.max(deepestDepth, depth),
+            Math.max(deepestDepth, deepest),
             Math.max(longestRunTurns, turns),
             fastestWinTurns,
             amuletPickups,
@@ -185,7 +187,7 @@ final class PlayerStats {
             nextDepths);
     }
 
-    PlayerStats withPlayerWon(boolean superVictory, int depth, int turns) {
+    PlayerStats withPlayerWon(boolean superVictory, int deepest, int turns) {
         int nextFastest = (fastestWinTurns == 0 || turns < fastestWinTurns)
             ? turns : fastestWinTurns;
         return new PlayerStats(
@@ -193,7 +195,7 @@ final class PlayerStats {
             wins + 1,
             masteryWins + (superVictory ? 1 : 0),
             deaths,
-            Math.max(deepestDepth, depth),
+            Math.max(deepestDepth, deepest),
             Math.max(longestRunTurns, turns),
             nextFastest,
             amuletPickups,
@@ -244,11 +246,11 @@ final class PlayerStats {
             copyDepths(deathsPerDepth));
     }
 
-    PlayerStats withPlayerQuit() {
+    PlayerStats withPlayerQuit(int deepest) {
         return new PlayerStats(
             gamesPlayed,
             wins, masteryWins, deaths,
-            deepestDepth, longestRunTurns, fastestWinTurns, amuletPickups,
+            Math.max(deepestDepth, deepest), longestRunTurns, fastestWinTurns, amuletPickups,
             new ArrayList<>(kills),
             new ArrayList<>(deathCauses),
             new ArrayList<>(alliesFreed),

@@ -240,12 +240,14 @@ class SeedDetailsModal {
 
     private void launchRun() {
         if (seed <= 0) return;   // weekly modal: /weekly hasn't landed yet
-        activity.modalStack.clear();
-        activity.startMenu.dismiss();
-        // Starting a new run overwrites the save slot; drop the existing
-        // save first so /game/start telemetry and the fresh run agree.
-        activity.nativeDeleteSaveFile();
-        activity.nativeStartMenuResultWithSeed(StartMenu.CHOICE_PLAY_SEED, seed);
+        activity.fadeToBlackThen(() -> {
+            activity.modalStack.clear();
+            activity.startMenu.dismiss();
+            // Starting a new run overwrites the save slot; drop the existing
+            // save first so /game/start telemetry and the fresh run agree.
+            activity.nativeDeleteSaveFile();
+            activity.nativeStartMenuResultWithSeed(StartMenu.CHOICE_PLAY_SEED, seed);
+        });
     }
 
     private TextView addStatTile(LinearLayout parent, String value, String label) {

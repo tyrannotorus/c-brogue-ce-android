@@ -2819,7 +2819,7 @@ static boolean displayMagicCharForItem(item *theItem) {
 }
 
 // Strip brogue color escape sequences (COLOR_ESCAPE + 3 bytes) from a string.
-static void stripEscapes(char *dest, const char *src, int maxLen) {
+void stripEscapes(char *dest, const char *src, int maxLen) {
     int j = 0;
     for (int i = 0; src[i] && j < maxLen - 1;) {
         if (src[i] == COLOR_ESCAPE) {
@@ -2832,7 +2832,7 @@ static void stripEscapes(char *dest, const char *src, int maxLen) {
 }
 
 // Write a JSON-escaped version of src into dest. Returns chars written (excluding NUL).
-static int jsonEscape(char *dest, const char *src, int maxLen) {
+int jsonEscape(char *dest, const char *src, int maxLen) {
     int j = 0;
     for (int i = 0; src[i] && j < maxLen - 2; i++) {
         char c = src[i];
@@ -2902,9 +2902,10 @@ char displayInventory(unsigned short categoryMask,
     char promptEsc[COLS * 2];
     jsonEscape(promptEsc, androidInventoryPrompt, sizeof(promptEsc));
     pos += snprintf(json, sizeof(json),
-        "{\"mode\":\"%s\",\"prompt\":\"%s\",\"items\":[",
+        "{\"mode\":\"%s\",\"prompt\":\"%s\",\"packCount\":%d,\"items\":[",
         waitForAcknowledge ? "inventory" : "select",
-        promptEsc);
+        promptEsc,
+        numberOfItemsInPack());
 
     for (i = 0; i < itemNumber; i++) {
         theItem = itemList[i];

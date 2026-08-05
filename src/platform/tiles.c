@@ -62,6 +62,48 @@ static int8_t tileShifts[TILE_ROWS][TILE_COLS][2][MAX_TILE_SIZE][3];
 static ScreenTile dungeonTiles[ROWS][COLS]; // dungeon layer (rendered at 2x zoom)
 static ScreenTile uiTiles[ROWS][COLS];     // UI layer (sidebar, messages, bottom bar, modals — rendered at 1x)
 
+// Victory flood: per-cell whiteness (0..100) on a grid stretched across the
+// whole screen. The engine fills it each step; updateScreen paints it.
+short victoryFloodWeight[ROWS][COLS];
+
+// Geometry of the last gameplay frame, so flood cells and dungeon cells can
+// be converted through the screen positions they share.
+static int lastMapOffsetX, lastMapOffsetY, lastMapZoomW, lastMapZoomH;
+static int lastScreenW, lastScreenH;
+
+void getScreenPixelSize(int *w, int *h) {
+    *w = lastScreenW;
+    *h = lastScreenH;
+}
+
+void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow) {
+    if (lastMapZoomW <= 0 || lastMapZoomH <= 0) {
+        *outCol = col;
+        *outRow = row;
+        return;
+    }
+    float sx = (col + 0.5f) * lastScreenW / COLS;
+    float sy = (row + 0.5f) * lastScreenH / ROWS;
+    int gx = (int)((sx - lastMapOffsetX) * COLS / lastMapZoomW);
+    int gy = (int)((sy - lastMapOffsetY) * ROWS / lastMapZoomH);
+    *outCol = max(0, min(COLS - 1, gx));
+    *outRow = max(0, min(ROWS - 1, gy));
+}
+
+void dungeonCellToFloodCell(int col, int row, int *outCol, int *outRow) {
+    if (lastScreenW <= 0 || lastScreenH <= 0) {
+        *outCol = col;
+        *outRow = row;
+        return;
+    }
+    float sx = lastMapOffsetX + (col + 0.5f) * lastMapZoomW / COLS;
+    float sy = lastMapOffsetY + (row + 0.5f) * lastMapZoomH / ROWS;
+    int gx = (int)(sx * COLS / lastScreenW);
+    int gy = (int)(sy * ROWS / lastScreenH);
+    *outCol = max(0, min(COLS - 1, gx));
+    *outRow = max(0, min(ROWS - 1, gy));
+}
+
 boolean plotToUiLayer = false; // set by commitDraws/refreshScreen to route plotChar → updateTile
 
 static ScreenTile titleScreenTiles[ROWS][TITLE_COLS];
@@ -97,6 +139,8 @@ void setRenderMode(enum RenderMode mode) {
         clearOverlayRegion();
     else if (mode == RENDER_TITLE)
         memset(uiTiles, 0, sizeof(uiTiles));
+    else if (mode == RENDER_VICTORY)
+        memset(victoryFloodWeight, 0, sizeof(victoryFloodWeight));
 }
 
 enum RenderMode getRenderMode(void) { return renderMode; }
@@ -870,6 +914,15 @@ void updateScreen() {
     outputWidth = zoomW;
     outputHeight = zoomH;
 
+    if (inGame) {
+        lastMapOffsetX = offsetX;
+        lastMapOffsetY = offsetY;
+        lastMapZoomW = outputWidth;
+        lastMapZoomH = outputHeight;
+        lastScreenW = screenW;
+        lastScreenH = screenH;
+    }
+
     createTextures(renderer, outputWidth, outputHeight);
 
     // Pass 1: render the map/title layer
@@ -955,6 +1008,29 @@ void updateScreen() {
                 }
             }
         }
+    }
+
+    // Pass 3: victory flood — white blended over both layers at each cell's
+    // weight, which is equivalent to averaging the cell's colors toward white.
+    if (renderMode == RENDER_VICTORY) {
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        for (int x = 0; x < COLS; x++) {
+            int rx = x * screenW / COLS;
+            int rw = (x + 1) * screenW / COLS - rx;
+            if (rw == 0) continue;
+            for (int y = 0; y < ROWS; y++) {
+                short wgt = victoryFloodWeight[y][x];
+                if (wgt <= 0) continue;
+                int ry = y * screenH / ROWS;
+                int rh = (y + 1) * screenH / ROWS - ry;
+                if (rh == 0) continue;
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255,
+                                       (Uint8)min(255, wgt * 255 / 100));
+                SDL_Rect dest = {rx, ry, rw, rh};
+                SDL_RenderFillRect(renderer, &dest);
+            }
+        }
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }
 
     SDL_RenderPresent(renderer);

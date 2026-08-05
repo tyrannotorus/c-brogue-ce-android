@@ -24,6 +24,7 @@ public class BrogueActivity extends SDLActivity {
     FrameLayout gameOverlay;
     FrameLayout inventoryOverlay;
     private View loadingOverlay;
+    private View transitionVeil;
 
     // Feature classes. Package-private so other features can reference them
     // directly (e.g. StartMenu → extrasModal.show()).
@@ -41,6 +42,7 @@ public class BrogueActivity extends SDLActivity {
     final NewGameSeedModal newGameSeedModal = new NewGameSeedModal(this);
     final ReplayRecentSeedModal replayRecentSeedModal = new ReplayRecentSeedModal(this);
     final DeathModal deathModal = new DeathModal(this);
+    final VictoryModal victoryModal = new VictoryModal(this);
     private SettingsPanel settingsPanel;
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
@@ -179,8 +181,9 @@ public class BrogueActivity extends SDLActivity {
         StatsStore.get(this).recordAmuletPickedUp();
     }
 
-    public void onPlayerDied(final String killedBy, final int depth, final int turns) {
-        StatsStore.get(this).recordPlayerDied(killedBy, depth, turns);
+    public void onPlayerDied(final String killedBy, final int depth, final int deepest,
+            final int turns) {
+        StatsStore.get(this).recordPlayerDied(killedBy, depth, deepest, turns);
         reportGameEnd("died", depth, turns);
     }
 
@@ -191,17 +194,24 @@ public class BrogueActivity extends SDLActivity {
     public native void nativeDeathFadeDone();
     public native void nativeDeathScreenDismissed();
 
+    public void showVictorySequence(final String json) {
+        victoryModal.showSequence(json);
+    }
+
+    public native void nativeVictorySequenceDismissed();
+
     public void onDeathFlamesReady() {
         deathModal.onFlamesReady();
     }
 
-    public void onPlayerWon(final boolean superVictory, final int depth, final int turns) {
-        StatsStore.get(this).recordPlayerWon(superVictory, depth, turns);
+    public void onPlayerWon(final boolean superVictory, final int depth, final int deepest,
+            final int turns) {
+        StatsStore.get(this).recordPlayerWon(superVictory, deepest, turns);
         reportGameEnd("won", depth, turns);
     }
 
-    public void onPlayerQuit(final int depth, final int turns) {
-        StatsStore.get(this).recordPlayerQuit();
+    public void onPlayerQuit(final int depth, final int deepest, final int turns) {
+        StatsStore.get(this).recordPlayerQuit(deepest);
         reportGameEnd("quit", depth, turns);
     }
 
@@ -226,6 +236,7 @@ public class BrogueActivity extends SDLActivity {
         android.util.Log.d("BrogueModal", "setOverlayVisible(" + visible + ")");
         runOnUiThread(() -> {
             if (visible) {
+                clearTransitionVeil();
                 // A game is on-screen — drop title-menu modals so they can't
                 // resurface after the engine returns to the title later.
                 modalStack.clear();
@@ -236,6 +247,7 @@ public class BrogueActivity extends SDLActivity {
                 // immediately instead of making the user tap through flames.
                 modalStack.restore();
                 deathModal.fadeOutOverlay();
+                victoryModal.fadeOutOverlay();
             }
             gameOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
         });
@@ -258,6 +270,38 @@ public class BrogueActivity extends SDLActivity {
         }
         ((TextView) loadingOverlay).setText(text);
         loadingOverlay.setVisibility(View.VISIBLE);
+        loadingOverlay.bringToFront(); // above any transition veil already up
+    }
+
+    /** Fades the screen out before a menu choice hands control to the engine,
+     *  which otherwise cuts straight from the title to loading. Cleared by
+     *  setOverlayVisible once the game is on screen. */
+    void fadeToBlackThen(final Runnable action) {
+        runOnUiThread(() -> {
+            if (transitionVeil == null) {
+                transitionVeil = new View(this);
+                transitionVeil.setBackgroundColor(Color.BLACK);
+                transitionVeil.setClickable(true);
+                addContentView(transitionVeil, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+            }
+            transitionVeil.bringToFront();
+            transitionVeil.setAlpha(0f);
+            transitionVeil.animate().alpha(1f).setDuration(400)
+                .withEndAction(action).start();
+        });
+    }
+
+    private void clearTransitionVeil() {
+        if (transitionVeil == null) return;
+        final View veil = transitionVeil;
+        transitionVeil = null;
+        veil.animate().alpha(0f).setDuration(400).withEndAction(() -> {
+            if (veil.getParent() != null) {
+                ((android.view.ViewGroup) veil.getParent()).removeView(veil);
+            }
+        }).start();
     }
 
     public void setLoadingVisible(final boolean visible) {
@@ -266,6 +310,15 @@ public class BrogueActivity extends SDLActivity {
                 showStatusOverlay("LOADING");
             } else if (loadingOverlay != null) {
                 loadingOverlay.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    /** Called from C while replaying a save file; percent advances in ~1% steps. */
+    public void setLoadingProgress(final int percent) {
+        runOnUiThread(() -> {
+            if (loadingOverlay != null && loadingOverlay.getVisibility() == View.VISIBLE) {
+                ((TextView) loadingOverlay).setText("LOADING " + percent + "%");
             }
         });
     }
