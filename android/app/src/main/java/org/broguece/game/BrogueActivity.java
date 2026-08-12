@@ -131,9 +131,8 @@ public class BrogueActivity extends SDLActivity {
         runOnUiThread(() -> applyHandedness(!sidebarOnRight, true));
     }
 
-    /** Mirrors the whole interface. The sidebar and the toolbar/D-Pad always
-     *  live on opposite edges, so one flag drives both sides — and the C
-     *  renderer's camera bias with them. */
+    /** Mirrors the interface. The sidebar and the toolbar/D-Pad always sit on
+     *  opposite edges, so one flag drives both, and the renderer's bias with them. */
     private void applyHandedness(boolean onRight, boolean flipped) {
         sidebarOnRight = onRight;
 
@@ -142,8 +141,7 @@ public class BrogueActivity extends SDLActivity {
             dpToPx(DPadOverlay.RIGHT_MARGIN_DP), dpadOverlay.leadingInsetPx());
 
         actionsToolbar.setMirrored(onRight);
-        // Only on a real flip: at launch the saved placement is already in the
-        // right frame, and mirroring it would negate it on every start.
+        // Only on a real flip; at launch the saved placement is already correct.
         if (flipped) {
             GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
             dpadOverlay.exitEditMode();
@@ -156,9 +154,8 @@ public class BrogueActivity extends SDLActivity {
         slideIntoPlace(dpadOverlay.getView(), dpadStart);
     }
 
-    /** The translation that leaves the view looking where it does now, once its
-     *  anchor has swapped sides — i.e. where the slide starts. Must be read
-     *  before the placement is mirrored, since that moves it too. */
+    /** Where the slide starts: the translation that leaves the view looking where
+     *  it does now, once the anchor has swapped. Must be read before mirroring. */
     private float slideStart(View view, int edgePx, int leadingInset) {
         if (view.getWidth() == 0) return view.getTranslationX();
         int jump = getWindow().getDecorView().getWidth() - view.getWidth()
@@ -177,9 +174,9 @@ public class BrogueActivity extends SDLActivity {
             .start();
     }
 
-    /** The game's SurfaceView shows through wherever the window is transparent,
-     *  and that region is only recomputed on layout. A view that moves without
-     *  one — or faster than one — stays invisible until something else redraws. */
+    /** The window's transparent region, which the game's SurfaceView shows
+     *  through, is only recomputed on layout — a view that moves without one
+     *  stays invisible. */
     private void refreshTransparentRegion(View view) {
         ViewParent parent = view.getParent();
         if (parent != null) parent.requestTransparentRegion(view);
@@ -196,8 +193,7 @@ public class BrogueActivity extends SDLActivity {
                        sidebarOnRight ? 0 : barEdge, 0);
         bottomGroup.setLayoutParams(bar);
 
-        // The pad's view overhangs its grid on the left, so anchoring it there
-        // has to discount that or the grid lands inset by it.
+        // The pad's view overhangs its grid on the left; anchoring there discounts it.
         int padEdge = dpToPx(DPadOverlay.RIGHT_MARGIN_DP);
         View pad = dpadOverlay.getView();
         FrameLayout.LayoutParams padParams =
@@ -225,10 +221,8 @@ public class BrogueActivity extends SDLActivity {
         return params;
     }
 
-    /** Applies the Movement setting. D-Pad mode shows the pad and stops swipes
-     *  from producing direction keys, so the two can't both drive movement.
-     *  The camera bias is measured from the pad's default slot — repositioning
-     *  it deliberately doesn't re-bias the view. */
+    /** D-Pad mode shows the pad and stops swipes producing direction keys. The
+     *  camera bias is measured from the pad's default slot, not its current one. */
     void applyMovementMode(int mode) {
         dpadMovement = mode == DPadOverlay.MOVEMENT_DPAD;
         updateDpadVisibility();

@@ -6,9 +6,8 @@
 
 #include "android-touch.h"
 
-// The idle loop is paced by the vsync-locked SDL_RenderPresent in
-// updateScreen(), so this only has to yield rather than throttle. Throttling
-// here instead would step the camera follow and two-finger pan at 28 Hz.
+// The idle loop is paced by the vsync-locked present in updateScreen(), so this
+// only has to yield rather than throttle.
 #define PAUSE_BETWEEN_EVENT_POLLING     1L
 #define TERRAIN_COLOR_DANCE_INTERVAL_MS 36ULL
 #define MIN_FRAME_INTERVAL_MS           15ULL
@@ -327,10 +326,8 @@ static void _delayUpTo(short ms) {
     lastDelayTime = SDL_GetTicks();
 }
 
-// updateScreen() blocks until the next vblank, so an engine loop that pauses
-// for less than a frame (rest-until-better, the message archive slide) would
-// run at the refresh rate instead of its requested speed. Present only when a
-// frame is actually due; the skipped iterations then cost only their delay.
+// updateScreen() blocks until the next vblank, so a loop pausing for less than
+// a frame would run at the refresh rate instead of its requested speed.
 static void _presentIfFrameDue(void) {
     static Uint64 lastPresent = 0;
 

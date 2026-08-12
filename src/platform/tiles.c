@@ -1037,14 +1037,10 @@ void updateScreen() {
     int cx = (screenW - zoomW) / 2 + (int)roundf(androidPanX);
     int cy = (screenH - zoomH) / 2 + (int)roundf(androidPanY);
 
-    // The sidebar and the D-Pad are both opaque and always sit on opposite
-    // edges, so the dungeon has to stay within the strip they leave free.
-    // Without this a player against a map edge keeps sliding across until they
-    // are underneath one of them.
-    //
-    // The bounds are the drawn dungeon's edges, not the grid's: the grid
-    // carries STAT_BAR_WIDTH blank columns on its left that are already enough
-    // to clear a left-hand sidebar, and none on its right.
+    // The sidebar and D-Pad are opaque and sit on opposite edges, so the dungeon
+    // stays within the strip they leave free. Bounds are the drawn dungeon's
+    // edges, not the grid's: the grid's blank left columns already clear a
+    // left-hand sidebar, and it has none on the right.
     int dungeonInset = (STAT_BAR_WIDTH + 1) * zoomW / COLS;
     int playfieldLeft = 0;
     int playfieldRight = screenW;

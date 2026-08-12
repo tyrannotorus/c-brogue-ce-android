@@ -20,11 +20,9 @@ import android.widget.LinearLayout;
 /** On-screen 3x3 movement pad, shown instead of swipe-to-move when Movement is
  *  set to D-Pad. Each cell sends one vi-key step on release.
  *
- *  A long press puts the pad into edit mode: it takes on the toolbar's action
- *  chrome, grows a resize handle in its top-left corner, and its cells go inert.
- *  Dragging the body moves it, dragging the handle scales it, and a tap anywhere
- *  outside commits and leaves. Dropping the pad near its default slot snaps it
- *  home, which is how a botched placement is undone. */
+ *  A long press enters edit mode: drag the body to move it, the corner handle to
+ *  scale it, tap outside to commit. Dropping it near its default slot snaps it
+ *  home. */
 final class DPadOverlay {
 
     static final String PREF_MOVEMENT_MODE = "movement_mode";
@@ -49,32 +47,27 @@ final class DPadOverlay {
     /** How near the default slot a drag has to land to click back into it. */
     private static final int SNAP_TO_DEFAULT_DP = 20;
 
-    /** Smallest cell allowed: a toolbar button plus its margins, so the pad's
-     *  buttons never shrink below the bar's and the shared icon size starts to
-     *  look cramped. */
+    /** A cell never shrinks below a toolbar button, so the shared icon size fits. */
     private static final int MIN_CELL_DP =
         ActionsToolbar.BTN_SIZE_DP + ActionsToolbar.BTN_MARGIN_DP * 2;
 
-    /** Floor scale holding a cell at MIN_CELL_DP, rounded up so it cannot land
-     *  a pixel under. The ceiling keeps the pad and its bottom margin inside a
-     *  landscape phone's short edge. */
+    /** Rounded up so a cell cannot land a pixel under MIN_CELL_DP. The ceiling
+     *  keeps the pad inside a landscape phone's short edge. */
     private static final int MIN_SCALE_PCT =
         (MIN_CELL_DP * 3 * 100 + SIZE_DP - 1) / SIZE_DP;
     private static final int MAX_SCALE_PCT = 150;
 
     private static final int HANDLE_DP = 22;
 
-    /** Edge of the square grab area centred on the handle. The pad carries a
-     *  transparent margin of half this on its top and left so the whole square
-     *  is inside the view — touches outside a view's bounds never reach it, so
-     *  without the margin only the inward half would be targetable. */
+    /** Edge of the square grab area centred on the handle. Touches never reach a
+     *  view outside its bounds, so the pad carries a transparent margin of half
+     *  this on its top and left to hold the whole square. */
     private static final int HANDLE_TOUCH_DP = 60;
     private static final int GRID_LINE_DP = 1;
 
-    /** Deliberately longer than the platform long-press, and fixed rather than
-     *  following the accessibility touch-and-hold delay. A finger resting on a
-     *  movement key between steps is normal, and arming on it costs the step
-     *  as well as the mode. */
+    /** Longer than the platform long-press, and fixed rather than following the
+     *  accessibility touch-and-hold delay: a finger resting on a movement key
+     *  between steps is normal. */
     private static final long EDIT_HOLD_MS = 1000L;
 
     private final BrogueActivity activity;
@@ -96,10 +89,8 @@ final class DPadOverlay {
         return activity.dpToPx(SIZE_DP) * savedScalePct() / 100 + grabMarginPx();
     }
 
-    /** How far the view reaches past its visible grid on the left and top, to
-     *  hold the handle's grab square. Harmless when the pad is anchored to the
-     *  right, but a left-anchored layout has to pull it back by this much or
-     *  the grid sits that far inside the screen edge. */
+    /** How far the view reaches past its grid on the left and top. A
+     *  left-anchored layout must discount it, or the grid sits inset by it. */
     int leadingInsetPx() {
         return grabMarginPx();
     }
@@ -141,9 +132,7 @@ final class DPadOverlay {
                      new Cell(90f, "Move down", 'j'),
                      new Cell(45f, "Move down-right", 'n'));
 
-        // Index 0: the pad's constructor already added the resize handle, which
-        // has to stay on top of the grid. MATCH_PARENT fills the content box, so
-        // the grid sits inside the grab margin at its true size.
+        // Index 0: the handle was added in the constructor and stays on top.
         pad.addView(grid, 0, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
@@ -256,9 +245,8 @@ final class DPadOverlay {
             // laid out inside it, so nothing visible moves.
             setPadding(marginPx, marginPx, 0, 0);
 
-            // Deliberately not anti-aliased. A hairline centred on a subpixel
-            // boundary dissolves into two half-covered rows, which reads as a
-            // dim line at rest and flickers as the pad is dragged.
+            // Not anti-aliased: a hairline on a subpixel boundary dissolves
+            // into two half-covered rows.
             gridStroke = Math.max(1, activity.dpToPx(GRID_LINE_DP));
             gridPaint = new Paint();
             gridPaint.setColor(Palette.BORDER_ACTIVE);
@@ -291,9 +279,8 @@ final class DPadOverlay {
             addView(handle, handleParams);
         }
 
-        /** Divider lines, drawn only while the pad is being arranged — at rest
-         *  the cells are self-contained buttons and need no lattice. They land
-         *  in the gaps between cells; the chrome supplies the outer box. */
+        /** Dividers, only while arranging. They land in the gaps between cells;
+         *  the chrome supplies the outer box. */
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
@@ -433,8 +420,7 @@ final class DPadOverlay {
         }
 
         private void persist() {
-            // Before the first layout there is no real size to record, and a
-            // zero would come back as the minimum scale on the next launch.
+            // No real size before the first layout.
             if (getWidth() == 0) return;
             GameSettings.setInt(activity, PREF_OFFSET_X, Math.round(getTranslationX()));
             GameSettings.setInt(activity, PREF_OFFSET_Y, Math.round(getTranslationY()));
@@ -442,10 +428,8 @@ final class DPadOverlay {
                 Math.round((getWidth() - marginPx) * 100f / baseSizePx));
         }
 
-        /** The default slot is translation zero, so dropping the pad near it
-         *  clicks it back home — a reset without a menu entry. Each move
-         *  recomputes the translation from the finger, so the zeroing here
-         *  never traps the drag inside the snap radius. */
+        /** The default slot is translation zero. Each move recomputes the
+         *  translation from the finger, so zeroing here cannot trap the drag. */
         private void snapToDefault() {
             boolean within = Math.hypot(getTranslationX(), getTranslationY()) < snapRadius;
             if (within) {
