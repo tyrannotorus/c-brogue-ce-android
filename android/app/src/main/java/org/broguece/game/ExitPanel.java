@@ -4,7 +4,6 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -90,7 +89,7 @@ final class ExitPanel {
             (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.6f));
 
         FrameLayout.LayoutParams scrollParams =
-            activity.toolbarSidePanelParams(panelWidth, 52);
+            activity.toolbarSidePanelParams(panelWidth);
 
         host.addView(scrollView, scrollParams);
         host.setVisibility(View.VISIBLE);

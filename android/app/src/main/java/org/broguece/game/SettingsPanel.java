@@ -113,7 +113,7 @@ final class SettingsPanel {
             (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.6f));
 
         FrameLayout.LayoutParams scrollParams =
-            activity.toolbarSidePanelParams(panelWidth, 52);
+            activity.toolbarSidePanelParams(panelWidth);
 
         host.addView(scrollView, scrollParams);
         host.setVisibility(View.VISIBLE);

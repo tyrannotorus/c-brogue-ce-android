@@ -351,9 +351,8 @@ final class DPadOverlay {
             setTranslationY(Math.round(dragStartTranslationY + event.getRawY() - downRawY));
             clampTranslation();
             snapToDefault();
-            // The game's SurfaceView shows through wherever the window is
-            // transparent, and that region is only recomputed on layout. Without
-            // this the pad vanishes as it leaves the slot it was laid out in.
+            // Without this the pad vanishes as it leaves the slot it was laid
+            // out in — the window's transparent region only tracks layout.
             if (getParent() != null) getParent().requestTransparentRegion(this);
         }
 

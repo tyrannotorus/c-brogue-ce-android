@@ -138,9 +138,9 @@ public class BrogueActivity extends SDLActivity {
         sidebarOnRight = onRight;
         if (persist) GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
 
-        float toolbarFrom = slideOrigin(bottomGroup, dpToPx(EDGE_SAFE_DP), onRight);
+        float toolbarFrom = slideOrigin(bottomGroup, dpToPx(EDGE_SAFE_DP));
         float dpadFrom = slideOrigin(dpadOverlay.getView(),
-            dpToPx(DPadOverlay.RIGHT_MARGIN_DP), onRight);
+            dpToPx(DPadOverlay.RIGHT_MARGIN_DP));
 
         actionsToolbar.setMirrored(onRight);
         dpadOverlay.exitEditMode();
@@ -156,10 +156,10 @@ public class BrogueActivity extends SDLActivity {
 
     /** How far the view is about to jump, so the jump can be played as a slide.
      *  Both edges keep the same margin, so the travel is whatever is left. */
-    private float slideOrigin(View view, int edgePx, boolean onRight) {
+    private float slideOrigin(View view, int edgePx) {
         if (view.getWidth() == 0) return 0f;
         int travel = getWindow().getDecorView().getWidth() - view.getWidth() - edgePx * 2;
-        return (onRight ? 1f : -1f) * travel;
+        return (sidebarOnRight ? 1f : -1f) * travel;
     }
 
     private void slideIntoPlace(View view, float from) {
@@ -207,14 +207,15 @@ public class BrogueActivity extends SDLActivity {
                           sidebarOnRight ? 0 : edge, bottom);
     }
 
-    /** Bottom popups (Settings, Exit, Actions) sit against the toolbar's edge. */
-    FrameLayout.LayoutParams toolbarSidePanelParams(int width, int bottomDp) {
+    /** Bottom popups (Settings, Exit, Actions) sit against the toolbar's edge,
+     *  clearing the bar itself. */
+    FrameLayout.LayoutParams toolbarSidePanelParams(int width) {
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             width, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM | (sidebarOnRight ? Gravity.START : Gravity.END));
         int edge = dpToPx(EDGE_SAFE_DP);
         params.setMargins(sidebarOnRight ? edge : 0, dpToPx(8),
-                          sidebarOnRight ? 0 : edge, dpToPx(bottomDp));
+                          sidebarOnRight ? 0 : edge, dpToPx(52));
         return params;
     }
 
