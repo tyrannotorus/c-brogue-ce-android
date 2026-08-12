@@ -449,6 +449,15 @@ float androidZoomLevel = 2.0f;
 float androidPanX = 0.0f, androidPanY = 0.0f;
 boolean androidCameraSnap = false;
 boolean androidPanOverride = false;
+volatile boolean androidSwipeMovementEnabled = true;
+volatile int androidDpadReservedWidthPx = 0;
+
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeSetDpadMovement(
+        JNIEnv *env, jobject thiz, jboolean enabled, jint reservedWidthPx) {
+    androidSwipeMovementEnabled = !enabled;
+    androidDpadReservedWidthPx = enabled ? reservedWidthPx : 0;
+}
 
 /* ---- Helpers ---- */
 
@@ -464,27 +473,21 @@ static void cellFromPixel(float px, float py, int *cx, int *cy) {
     int fitH = windowHeight;
     if (fitW > windowWidth) { fitW = windowWidth; fitH = windowWidth * 10 / 16; }
 
-    float zoom;
-    int ofsX, ofsY, w, h;
+    int ofsX = 0, ofsY = 0, w = 0, h = 0;
 
-    if (getRenderMode() == RENDER_MODAL || !rogue.gameInProgress) {
-        // UI layer: 1x, centered
-        zoom = 1.0f;
+    // Dungeon layer: take the rectangle the renderer actually used. Recomputing
+    // the zoom and pan clamps here instead drifts out of sync with it — the
+    // D-Pad's narrower playfield is one such clamp.
+    if (getRenderMode() != RENDER_MODAL && rogue.gameInProgress) {
+        getDungeonViewport(&ofsX, &ofsY, &w, &h);
+    }
+
+    // UI layer: 1x, centered. Also the fallback before the first drawn frame.
+    if (w <= 0 || h <= 0) {
         w = fitW;
         h = fitH;
         ofsX = (windowWidth - w) / 2;
         ofsY = (windowHeight - h) / 2;
-    } else {
-        // Dungeon layer: zoomed + panned
-        zoom = androidZoomLevel;
-        w = (int)(fitW * zoom);
-        h = (int)(fitH * zoom);
-        ofsX = (windowWidth - w) / 2 + (int)androidPanX;
-        ofsY = (windowHeight - h) / 2 + (int)androidPanY;
-        if (ofsX > 0) ofsX = 0;
-        if (ofsY > 0) ofsY = 0;
-        if (ofsX + w < windowWidth) ofsX = windowWidth - w;
-        if (ofsY + h < windowHeight) ofsY = windowHeight - h;
     }
 
     *cx = (int)((px - ofsX) * COLS / w);
@@ -592,7 +595,8 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
                 out->controlKey = false;
                 return true;
             } else if (moved > TAP_MAX_MOVE_PX) {
-                /* Moved too far for a tap — it's a swipe */
+                /* Moved too far for a tap — it's a swipe. Still classified as
+                 * one in D-Pad mode, so it doesn't fall through to a tap. */
                 state = TOUCH_SWIPING;
             }
         } else if (state == TOUCH_INSPECTING && event->tfinger.fingerId == primaryFinger) {
@@ -657,7 +661,8 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             float dx = px - startX;
             float dy = py - startY;
 
-            if (dist(startX, startY, px, py) >= SWIPE_THRESHOLD_PX) {
+            if (androidSwipeMovementEnabled
+                    && dist(startX, startY, px, py) >= SWIPE_THRESHOLD_PX) {
                 /* Explicit movement gesture — re-engage camera follow */
                 if (rogue.gameInProgress && getRenderMode() != RENDER_MODAL) {
                     androidPanOverride = false;

@@ -55,6 +55,15 @@ extern boolean androidPanOverride;
 /* True while two fingers are currently down panning. */
 boolean androidTwoFingerActive(void);
 
+/* False in D-Pad movement mode: swipes are still recognised (so they don't
+ * degrade into taps) but no longer emit a direction keystroke. */
+extern volatile boolean androidSwipeMovementEnabled;
+
+/* Width the D-Pad occupies on the right of the screen at its default position,
+ * or 0 when it is hidden. The gameplay camera centres the player in the strip
+ * this leaves free, so a repositioned pad keeps the default bias. */
+extern volatile int androidDpadReservedWidthPx;
+
 /* When true, snap the camera to the player immediately instead of tweening.
  * Set on game load; consumed after the first frame. */
 extern boolean androidCameraSnap;

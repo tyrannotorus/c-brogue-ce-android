@@ -46,6 +46,7 @@ public class BrogueActivity extends SDLActivity {
     private SettingsPanel settingsPanel;
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
+    private DPadOverlay dpadOverlay;
     private InventoryOverlay inventoryRenderer;
     private DiscoveriesOverlay discoveriesRenderer;
     TextInputDialog textInputDialog;
@@ -81,8 +82,19 @@ public class BrogueActivity extends SDLActivity {
         textInputDialog = new TextInputDialog(this);
 
         actionsToolbar = new ActionsToolbar(this, gameOverlay, inventoryOverlay,
-            settingsPanel::show, exitPanel::show);
+            settingsPanel::show, exitPanel::show, this::setSubmenuOpen);
         View bottomGroup = actionsToolbar.build();
+
+        // Added before the toolbar: the hamburger submenu expands into the
+        // pad's default slot, and must draw and take touches above it.
+        dpadOverlay = new DPadOverlay(this, gameOverlay, actionsToolbar::collapseSubmenu);
+        int dpadSize = dpadOverlay.sizePx();
+        FrameLayout.LayoutParams dpadParams = new FrameLayout.LayoutParams(
+            dpadSize, dpadSize, Gravity.BOTTOM | Gravity.END);
+        dpadParams.setMargins(0, 0, dpToPx(DPadOverlay.RIGHT_MARGIN_DP),
+            dpToPx(DPadOverlay.BOTTOM_MARGIN_DP));
+        gameOverlay.addView(dpadOverlay.getView(), dpadParams);
+
         FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -90,11 +102,42 @@ public class BrogueActivity extends SDLActivity {
         bottomParams.setMargins(0, 0, dpToPx(EDGE_SAFE_DP), 0);
         gameOverlay.addView(bottomGroup, bottomParams);
 
+        applyMovementMode(GameSettings.getInt(this, DPadOverlay.PREF_MOVEMENT_MODE,
+            DPadOverlay.MOVEMENT_SWIPE));
+
         achievementToast = new AchievementToast(this, gameOverlay);
         // Listener fires on the StatsStore handler thread; marshal to UI.
         StatsStore.get(this).setUnlockListener(
             a -> runOnUiThread(() -> achievementToast.show(a)));
 
+    }
+
+    private boolean dpadMovement;
+    private boolean submenuOpen;
+
+    /** Applies the Movement setting. D-Pad mode shows the pad and stops swipes
+     *  from producing direction keys, so the two can't both drive movement.
+     *  The camera bias is measured from the pad's default slot — repositioning
+     *  it deliberately doesn't re-bias the view. */
+    void applyMovementMode(int mode) {
+        dpadMovement = mode == DPadOverlay.MOVEMENT_DPAD;
+        updateDpadVisibility();
+        nativeSetDpadMovement(dpadMovement,
+            dpToPx(DPadOverlay.SIZE_DP + DPadOverlay.RIGHT_MARGIN_DP));
+    }
+
+    /** The hamburger submenu expands into the pad's default slot, so the pad
+     *  steps aside for as long as it is up. */
+    private void setSubmenuOpen(boolean open) {
+        submenuOpen = open;
+        updateDpadVisibility();
+    }
+
+    private void updateDpadVisibility() {
+        boolean visible = dpadMovement && !submenuOpen;
+        // Hiding the pad mid-edit would strand gameOverlay swallowing every tap.
+        if (!visible) dpadOverlay.exitEditMode();
+        dpadOverlay.getView().setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     @Override
@@ -353,6 +396,7 @@ public class BrogueActivity extends SDLActivity {
     native void nativeTextInputResult(boolean confirmed, String text);
     native long nativeGetSeed();
     native void nativeDeleteSaveFile();
+    native void nativeSetDpadMovement(boolean enabled, int reservedWidthPx);
 
     // ---- Navigation ------------------------------------------------------
 

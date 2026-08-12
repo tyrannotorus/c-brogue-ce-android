@@ -6,7 +6,12 @@
 
 #include "android-touch.h"
 
-#define PAUSE_BETWEEN_EVENT_POLLING     36L//17
+// The idle loop is paced by the vsync-locked SDL_RenderPresent in
+// updateScreen(), so this only has to yield rather than throttle. Throttling
+// here instead would step the camera follow and two-finger pan at 28 Hz.
+#define PAUSE_BETWEEN_EVENT_POLLING     1L
+#define TERRAIN_COLOR_DANCE_INTERVAL_MS 36ULL
+#define MIN_FRAME_INTERVAL_MS           15ULL
 #define MAX_REMAPS  128
 
 struct keypair {
@@ -322,8 +327,22 @@ static void _delayUpTo(short ms) {
     lastDelayTime = SDL_GetTicks();
 }
 
-static boolean _pauseForMilliseconds(short ms, PauseBehavior behavior) {
+// updateScreen() blocks until the next vblank, so an engine loop that pauses
+// for less than a frame (rest-until-better, the message archive slide) would
+// run at the refresh rate instead of its requested speed. Present only when a
+// frame is actually due; the skipped iterations then cost only their delay.
+static void _presentIfFrameDue(void) {
+    static Uint64 lastPresent = 0;
+
+    Uint64 now = SDL_GetTicks64();
+    if (lastPresent && now - lastPresent < MIN_FRAME_INTERVAL_MS) return;
+
     updateScreen();
+    lastPresent = SDL_GetTicks64();
+}
+
+static boolean _pauseForMilliseconds(short ms, PauseBehavior behavior) {
+    _presentIfFrameDue();
     _delayUpTo(ms);
 
     if (lastEvent.eventType != EVENT_ERROR
@@ -346,10 +365,19 @@ static void _nextKeyOrMouseEvent(rogueEvent *returnEvent, boolean textInput, boo
         return;
     }
 
+    Uint64 nextColorDanceTime = SDL_GetTicks64();
+
     while (true) {
-        if (colorsDance) {
+        Uint64 now = SDL_GetTicks64();
+        if (colorsDance && now >= nextColorDanceTime) {
             shuffleTerrainColors(3, true);
             commitDraws();
+
+            // Keep the original 36 ms cadence now that the loop itself runs at
+            // the display refresh rate, and skip past any missed slots so a
+            // stall doesn't replay them in a burst.
+            nextColorDanceTime += ((now - nextColorDanceTime)
+                / TERRAIN_COLOR_DANCE_INTERVAL_MS + 1) * TERRAIN_COLOR_DANCE_INTERVAL_MS;
         }
 
         updateScreen();

@@ -22,6 +22,13 @@ static int modalNestCount = 0;
 #define TEXT_BASELINE  46   // height (px) of the blank space below the 'x' outline
 #define MAX_TILE_SIZE  64   // maximum width or height (px) of screen tiles before we switch to linear interpolation
 
+// Camera follow speed, expressed as the fraction of the remaining distance
+// covered in one CAMERA_REFERENCE_FRAME_MS frame. The per-frame alpha is
+// rescaled from the real elapsed time so the follow feels identical at any
+// refresh rate.
+#define CAMERA_FOLLOW_LERP          0.15f
+#define CAMERA_REFERENCE_FRAME_MS   36.0
+
 
 // How each tile should be processed:
 //  -  's' = stretch: tile stretches to fill the space
@@ -76,6 +83,16 @@ void getScreenPixelSize(int *w, int *h) {
     *h = lastScreenH;
 }
 
+// The rectangle the dungeon layer was last drawn into. Input maps touches back
+// to cells through this rather than re-deriving the zoom and pan clamps, which
+// silently drift apart from the ones the renderer actually applied.
+void getDungeonViewport(int *x, int *y, int *w, int *h) {
+    *x = lastMapOffsetX;
+    *y = lastMapOffsetY;
+    *w = lastMapZoomW;
+    *h = lastMapZoomH;
+}
+
 void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow) {
     if (lastMapZoomW <= 0 || lastMapZoomH <= 0) {
         *outCol = col;
@@ -102,6 +119,21 @@ void dungeonCellToFloodCell(int col, int row, int *outCol, int *outRow) {
     int gy = (int)(sy * ROWS / lastScreenH);
     *outCol = max(0, min(COLS - 1, gx));
     *outRow = max(0, min(ROWS - 1, gy));
+}
+
+// Performance counter at the last rendered frame; 0 means "no previous frame".
+// A long stall (backgrounding, level load) makes the alpha saturate at 1, which
+// snaps the camera to the player — the same thing the stall should produce.
+static Uint64 cameraLastUpdateCounter = 0;
+
+// Fraction of the remaining distance to cover this frame, rescaled from the
+// reference frame so the camera follows at the same speed at any refresh rate.
+static float cameraFollowAlpha(double elapsedMs) {
+    if (elapsedMs <= 0.0) return 0.0f;
+
+    float alpha = 1.0f - powf(1.0f - CAMERA_FOLLOW_LERP,
+                              (float)(elapsedMs / CAMERA_REFERENCE_FRAME_MS));
+    return alpha > 1.0f ? 1.0f : alpha;
 }
 
 boolean plotToUiLayer = false; // set by commitDraws/refreshScreen to route plotChar → updateTile
@@ -807,7 +839,11 @@ void updateScreen() {
 
     SDL_Renderer *renderer = SDL_GetRenderer(Win);
     if (!renderer) {
-        renderer = SDL_CreateRenderer(Win, -1, (softwareRendering ? SDL_RENDERER_SOFTWARE : 0));
+        Uint32 rendererFlags = (softwareRendering ? SDL_RENDERER_SOFTWARE : 0);
+        // Vsync paces the idle render loop, which is what makes the camera
+        // follow and two-finger pan advance in even steps.
+        renderer = SDL_CreateRenderer(Win, -1, rendererFlags | SDL_RENDERER_PRESENTVSYNC);
+        if (!renderer) renderer = SDL_CreateRenderer(Win, -1, rendererFlags);
         if (!renderer) sdlfatal(__FILE__, __LINE__);
 
         if (SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE) < 0) sdlfatal(__FILE__, __LINE__);
@@ -843,6 +879,14 @@ void updateScreen() {
         SDL_RenderPresent(renderer);
         return;
     }
+
+    Uint64 cameraUpdateCounter = SDL_GetPerformanceCounter();
+    Uint64 performanceFrequency = SDL_GetPerformanceFrequency();
+    double cameraElapsedMs = cameraLastUpdateCounter && performanceFrequency
+        ? (double)(cameraUpdateCounter - cameraLastUpdateCounter) * 1000.0
+            / (double)performanceFrequency
+        : CAMERA_REFERENCE_FRAME_MS;
+    cameraLastUpdateCounter = cameraUpdateCounter;
 
     float effectiveZoom = (renderMode != RENDER_TITLE) ? androidZoomLevel : 1.0f;
     boolean inGame = (renderMode != RENDER_TITLE);
@@ -881,7 +925,15 @@ void updateScreen() {
             centerX = COLS / 2;
             centerY = ROWS / 2;
         }
-        float targetPanX = screenW / 2.0f - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
+        // With the D-Pad up, centre the player in the strip left free between
+        // the sidebar and the pad instead of on the whole screen.
+        float focusX = screenW / 2.0f;
+        if (inGame && androidDpadReservedWidthPx > 0) {
+            float sidebarRight = (float)STAT_BAR_WIDTH * fitW / COLS;
+            focusX = (sidebarRight + screenW - androidDpadReservedWidthPx) / 2.0f;
+        }
+
+        float targetPanX = focusX - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
         float targetPanY = screenH / 2.0f - (centerY + 0.5f) * zoomH / ROWS - (screenH - zoomH) / 2.0f;
         if (androidCameraSnap) {
             androidPanX = targetPanX;
@@ -889,18 +941,32 @@ void updateScreen() {
             androidCameraSnap = false;
             androidPanOverride = false;
         } else {
-            androidPanX += (targetPanX - androidPanX) * 0.15f;
-            androidPanY += (targetPanY - androidPanY) * 0.15f;
+            float followLerp = cameraFollowAlpha(cameraElapsedMs);
+            androidPanX += (targetPanX - androidPanX) * followLerp;
+            androidPanY += (targetPanY - androidPanY) * followLerp;
         }
     }
 
-    int cx = (screenW - zoomW) / 2 + (int)androidPanX;
-    int cy = (screenH - zoomH) / 2 + (int)androidPanY;
+    // Round rather than truncate: truncation biases toward zero, so the
+    // viewport jumps a pixel as the pan crosses the origin.
+    int cx = (screenW - zoomW) / 2 + (int)roundf(androidPanX);
+    int cy = (screenH - zoomH) / 2 + (int)roundf(androidPanY);
+
+    // The D-Pad ends the playfield early: without this the map's east edge only
+    // stops at the screen edge, and a player in the last columns keeps sliding
+    // right until they are sitting underneath the pad.
+    int playfieldRight = screenW;
+    if (inGame && androidDpadReservedWidthPx > 0) {
+        playfieldRight -= androidDpadReservedWidthPx;
+    }
 
     // Clamp pan
     if (cx > 0) { androidPanX -= cx; cx = 0; }
     if (cy > 0) { androidPanY -= cy; cy = 0; }
-    if (cx + zoomW < screenW) { androidPanX += screenW - (cx + zoomW); cx = screenW - zoomW; }
+    if (cx + zoomW < playfieldRight) {
+        androidPanX += playfieldRight - (cx + zoomW);
+        cx = playfieldRight - zoomW;
+    }
     if (cy + zoomH < screenH) { androidPanY += screenH - (cy + zoomH); cy = screenH - zoomH; }
 
     if (effectiveZoom <= 1.0f) {

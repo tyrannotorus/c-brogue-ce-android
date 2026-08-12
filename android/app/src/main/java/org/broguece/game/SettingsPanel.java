@@ -28,6 +28,11 @@ final class SettingsPanel {
         "Graphics: ASCII", "Graphics: Tiles", "Graphics: Hybrid"
     };
 
+    // Index matches DPadOverlay.MOVEMENT_*.
+    private static final String[] MOVEMENT_MODE_LABELS = {
+        "Movement: Swipe", "Movement: D-Pad"
+    };
+
     private final BrogueActivity activity;
     private final FrameLayout host;
 
@@ -90,6 +95,7 @@ final class SettingsPanel {
         addAppToggle(panel, "Enable Server", "server_enabled",
             v -> activity.extrasModal.clearCache());
         addGraphicsModeCycler(panel);
+        addMovementModeCycler(panel);
 
         addSeparator(panel);
 
@@ -297,6 +303,23 @@ final class SettingsPanel {
             GameSettings.setInt(activity, "graphics_mode", currentMode[0]);
             labelView.setText(GRAPHICS_MODE_LABELS[currentMode[0]]);
             KeyInput.sendChar(activity, 'G');
+        });
+    }
+
+    private void addMovementModeCycler(LinearLayout panel) {
+        int mode = GameSettings.getInt(activity, DPadOverlay.PREF_MOVEMENT_MODE,
+            DPadOverlay.MOVEMENT_SWIPE);
+        if (mode < 0 || mode >= MOVEMENT_MODE_LABELS.length) mode = DPadOverlay.MOVEMENT_SWIPE;
+
+        LinearLayout row = addRow(panel, MOVEMENT_MODE_LABELS[mode]);
+        TextView labelView = (TextView) row.getChildAt(0);
+
+        final int[] currentMode = {mode};
+        row.setOnClickListener(v -> {
+            currentMode[0] = (currentMode[0] + 1) % MOVEMENT_MODE_LABELS.length;
+            GameSettings.setInt(activity, DPadOverlay.PREF_MOVEMENT_MODE, currentMode[0]);
+            labelView.setText(MOVEMENT_MODE_LABELS[currentMode[0]]);
+            activity.applyMovementMode(currentMode[0]);
         });
     }
 

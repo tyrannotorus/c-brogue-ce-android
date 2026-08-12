@@ -115,6 +115,7 @@ extern short victoryFloodWeight[ROWS][COLS];
 void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow);
 void dungeonCellToFloodCell(int col, int row, int *outCol, int *outRow);
 void getScreenPixelSize(int *w, int *h);
+void getDungeonViewport(int *x, int *y, int *w, int *h);
 void androidSetRestoringVisible(boolean visible);
 void androidApplySettings(void);
 void deathFlameLoop(volatile boolean *dismissed);

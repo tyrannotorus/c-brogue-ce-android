@@ -36,6 +36,13 @@ import org.json.JSONArray;
  *  construction; everything else is internal. */
 final class ActionsToolbar {
 
+    /** Padding between the bar's edge and the button row. */
+    static final int BAR_PAD_DP = 4;
+
+    /** Spacing around each bar button; shared so other controls can sit on the
+     *  same rhythm. */
+    static final int BTN_MARGIN_DP = 3;
+
     private static final String PREFS        = "brogue_toolbar";
     private static final String PREF_PINNED  = "pinned_actions";
     private static final String PREF_ORDER   = "action_order";
@@ -60,6 +67,7 @@ final class ActionsToolbar {
     private final FrameLayout inventoryOverlay;  // host for the Actions panel
     private final Runnable onSettingsClicked;
     private final Runnable onExitClicked;
+    private final java.util.function.Consumer<Boolean> onSubmenuVisibleChanged;
 
     private LinearLayout toolbarContainer;
     private LinearLayout submenu;
@@ -71,12 +79,14 @@ final class ActionsToolbar {
                    FrameLayout gameOverlay,
                    FrameLayout inventoryOverlay,
                    Runnable onSettingsClicked,
-                   Runnable onExitClicked) {
+                   Runnable onExitClicked,
+                   java.util.function.Consumer<Boolean> onSubmenuVisibleChanged) {
         this.activity = activity;
         this.gameOverlay = gameOverlay;
         this.inventoryOverlay = inventoryOverlay;
         this.onSettingsClicked = onSettingsClicked;
         this.onExitClicked = onExitClicked;
+        this.onSubmenuVisibleChanged = onSubmenuVisibleChanged;
     }
 
     // ---- Public surface -----------------------------------------------------
@@ -128,7 +138,7 @@ final class ActionsToolbar {
         toolbarContainer.setOrientation(LinearLayout.HORIZONTAL);
         toolbarContainer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         toolbarContainer.setBackground(makeBarBackground());
-        int barPad = dp(4);
+        int barPad = dp(BAR_PAD_DP);
         toolbarContainer.setPadding(barPad, barPad, barPad, barPad);
 
         LinearLayout bottomGroup = new LinearLayout(activity);
@@ -153,7 +163,12 @@ final class ActionsToolbar {
         submenu.animate()
             .alpha(0f).translationY(dp(6))
             .setDuration(100)
-            .withEndAction(() -> submenu.setVisibility(View.GONE))
+            .withEndAction(() -> {
+                submenu.setVisibility(View.GONE);
+                // Reported at the end of the fade, so whatever stepped aside
+                // for the submenu doesn't reappear underneath it.
+                onSubmenuVisibleChanged.accept(false);
+            })
             .start();
         animateToggle(menuBtn, false);
     }
@@ -284,7 +299,7 @@ final class ActionsToolbar {
 
         java.util.Set<String> pinned = getPinned();
         int btnSize = dp(44);
-        int btnMargin = dp(3);
+        int btnMargin = dp(BTN_MARGIN_DP);
 
         for (String key : getActionOrder()) {
             if (!pinned.contains(key)) continue;
@@ -645,6 +660,7 @@ final class ActionsToolbar {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
 
+        onSubmenuVisibleChanged.accept(true);
         submenu.setAlpha(0f);
         submenu.setTranslationY(dp(8));
         submenu.setVisibility(View.VISIBLE);
