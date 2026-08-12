@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -54,7 +55,12 @@ final class DPadOverlay {
     private static final int MAX_SCALE_PCT = 150;
 
     private static final int HANDLE_DP = 22;
-    private static final int HANDLE_TOUCH_DP = 44;
+
+    /** Edge of the square grab area centred on the handle. The pad carries a
+     *  transparent margin of half this on its top and left so the whole square
+     *  is inside the view — touches outside a view's bounds never reach it, so
+     *  without the margin only the inward half would be targetable. */
+    private static final int HANDLE_TOUCH_DP = 60;
     private static final int GRID_LINE_DP = 1;
 
     /** Breathing room around a cell's glyph, so it shrinks with the pad rather
@@ -81,9 +87,21 @@ final class DPadOverlay {
         return root;
     }
 
-    /** Edge length of the pad at its saved scale. */
+    /** Edge length of the pad's view: the visible grid plus the grab margin. */
     int sizePx() {
-        return activity.dpToPx(SIZE_DP) * savedScalePct() / 100;
+        return activity.dpToPx(SIZE_DP) * savedScalePct() / 100 + grabMarginPx();
+    }
+
+    /** How far the view reaches past its visible grid on the left and top, to
+     *  hold the handle's grab square. Harmless when the pad is anchored to the
+     *  right, but a left-anchored layout has to pull it back by this much or
+     *  the grid sits that far inside the screen edge. */
+    int leadingInsetPx() {
+        return grabMarginPx();
+    }
+
+    private int grabMarginPx() {
+        return activity.dpToPx(HANDLE_TOUCH_DP) / 2;
     }
 
     /** Leaves edit mode if it is active, committing the current placement. */
@@ -103,10 +121,6 @@ final class DPadOverlay {
     }
 
     private DragGrid build(FrameLayout host) {
-        // The resize handle overhangs the pad's top-left corner, and a parent
-        // clips each child to its own bounds unless told otherwise.
-        host.setClipChildren(false);
-
         DragGrid pad = new DragGrid(activity, host);
         pad.setTranslationX(GameSettings.getInt(activity, PREF_OFFSET_X, 0));
         pad.setTranslationY(GameSettings.getInt(activity, PREF_OFFSET_Y, 0));
@@ -124,7 +138,8 @@ final class DPadOverlay {
                      new Cell(45f, "Move down-right", 'n'));
 
         // Index 0: the pad's constructor already added the resize handle, which
-        // has to stay on top of the grid.
+        // has to stay on top of the grid. MATCH_PARENT fills the content box, so
+        // the grid sits inside the grab margin at its true size.
         pad.addView(grid, 0, new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
@@ -212,7 +227,8 @@ final class DPadOverlay {
         private final Runnable armEdit = this::beginEdit;
         private final int touchSlop;
         private final int snapRadius;
-        private final int handleTouchPx;
+        private final int grabPx;
+        private final int marginPx;
         private final int baseSizePx;
 
         private float downRawX, downRawY;
@@ -228,8 +244,13 @@ final class DPadOverlay {
             this.host = host;
             touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
             snapRadius = activity.dpToPx(SNAP_TO_DEFAULT_DP);
-            handleTouchPx = activity.dpToPx(HANDLE_TOUCH_DP);
+            grabPx = activity.dpToPx(HANDLE_TOUCH_DP);
+            marginPx = grabPx / 2;
             baseSizePx = activity.dpToPx(SIZE_DP);
+
+            // Transparent margin the handle's grab square lives in. The grid is
+            // laid out inside it, so nothing visible moves.
+            setPadding(marginPx, marginPx, 0, 0);
 
             // Deliberately not anti-aliased. A hairline centred on a subpixel
             // boundary dissolves into two half-covered rows, which reads as a
@@ -249,7 +270,7 @@ final class DPadOverlay {
             chrome.setCornerRadius(activity.dpToPx(2));
             chrome.setColor(Palette.DEEP_INDIGO);
             chrome.setStroke(activity.dpToPx(2), Palette.BORDER_ACTIVE);
-            editChrome = chrome;
+            editChrome = new InsetDrawable(chrome, marginPx, marginPx, 0, 0);
 
             handle = new ImageView(activity);
             handle.setImageResource(R.drawable.ic_dpad_resize);
@@ -262,8 +283,7 @@ final class DPadOverlay {
             FrameLayout.LayoutParams handleParams = new FrameLayout.LayoutParams(
                 handlePx, handlePx, Gravity.TOP | Gravity.START);
             handleParams.setMargins(-handlePx / 2, -handlePx / 2, 0, 0);
-            setClipChildren(false);
-            setClipToPadding(false);
+            setClipToPadding(false);   // the handle draws into the margin
             addView(handle, handleParams);
         }
 
@@ -278,12 +298,14 @@ final class DPadOverlay {
             float inset = gridStroke / 2f;
             float w = getWidth();
             float h = getHeight();
+            float gridW = w - marginPx;
+            float gridH = h - marginPx;
 
             for (int i = 1; i < 3; i++) {
-                float x = Math.round(w * i / 3f);
-                float y = Math.round(h * i / 3f);
-                canvas.drawLine(x, inset, x, h - inset, gridPaint);
-                canvas.drawLine(inset, y, w - inset, y, gridPaint);
+                float x = marginPx + Math.round(gridW * i / 3f);
+                float y = marginPx + Math.round(gridH * i / 3f);
+                canvas.drawLine(x, marginPx + inset, x, h - inset, gridPaint);
+                canvas.drawLine(marginPx + inset, y, w - inset, y, gridPaint);
             }
         }
 
@@ -314,8 +336,9 @@ final class DPadOverlay {
                     case MotionEvent.ACTION_DOWN:
                         downRawX = event.getRawX();
                         downRawY = event.getRawY();
-                        resizing = event.getX() < handleTouchPx
-                                && event.getY() < handleTouchPx;
+                        int half = Math.min(grabPx, (getWidth() - marginPx) * 2 / 3) / 2;
+                        resizing = Math.abs(event.getX() - marginPx) < half
+                                && Math.abs(event.getY() - marginPx) < half;
                         dragStartTranslationX = getTranslationX();
                         dragStartTranslationY = getTranslationY();
                         dragStartSizePx = getWidth();
@@ -363,8 +386,8 @@ final class DPadOverlay {
             float grow = ((downRawX - event.getRawX())
                         + (downRawY - event.getRawY())) / 2f;
             int size = Math.round(dragStartSizePx + grow);
-            size = Math.max(baseSizePx * MIN_SCALE_PCT / 100,
-                   Math.min(baseSizePx * MAX_SCALE_PCT / 100, size));
+            size = Math.max(baseSizePx * MIN_SCALE_PCT / 100 + marginPx,
+                   Math.min(baseSizePx * MAX_SCALE_PCT / 100 + marginPx, size));
 
             ViewGroup.LayoutParams params = getLayoutParams();
             if (params.width == size) return;
@@ -406,10 +429,13 @@ final class DPadOverlay {
         }
 
         private void persist() {
+            // Before the first layout there is no real size to record, and a
+            // zero would come back as the minimum scale on the next launch.
+            if (getWidth() == 0) return;
             GameSettings.setInt(activity, PREF_OFFSET_X, Math.round(getTranslationX()));
             GameSettings.setInt(activity, PREF_OFFSET_Y, Math.round(getTranslationY()));
             GameSettings.setInt(activity, PREF_SCALE_PCT,
-                Math.round(getWidth() * 100f / baseSizePx));
+                Math.round((getWidth() - marginPx) * 100f / baseSizePx));
         }
 
         /** The default slot is translation zero, so dropping the pad near it

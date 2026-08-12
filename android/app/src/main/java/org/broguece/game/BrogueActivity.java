@@ -134,38 +134,42 @@ public class BrogueActivity extends SDLActivity {
     /** Mirrors the whole interface. The sidebar and the toolbar/D-Pad always
      *  live on opposite edges, so one flag drives both sides — and the C
      *  renderer's camera bias with them. */
-    private void applyHandedness(boolean onRight, boolean persist) {
+    private void applyHandedness(boolean onRight, boolean flipped) {
         sidebarOnRight = onRight;
-        if (persist) GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
 
-        float toolbarFrom = slideOrigin(bottomGroup, dpToPx(EDGE_SAFE_DP));
-        float dpadFrom = slideOrigin(dpadOverlay.getView(),
-            dpToPx(DPadOverlay.RIGHT_MARGIN_DP));
+        float toolbarStart = slideStart(bottomGroup, dpToPx(EDGE_SAFE_DP), 0);
+        float dpadStart = slideStart(dpadOverlay.getView(),
+            dpToPx(DPadOverlay.RIGHT_MARGIN_DP), dpadOverlay.leadingInsetPx());
 
         actionsToolbar.setMirrored(onRight);
-        dpadOverlay.exitEditMode();
-        dpadOverlay.mirrorPlacement();
+        // Only on a real flip: at launch the saved placement is already in the
+        // right frame, and mirroring it would negate it on every start.
+        if (flipped) {
+            GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
+            dpadOverlay.exitEditMode();
+            dpadOverlay.mirrorPlacement();
+        }
         layoutSideDependentViews();
-        // Only a deliberate flip animates; restoring the setting at launch
-        // should already be in place.
-        nativeSetSidebarOnRight(onRight, persist);
+        nativeSetSidebarOnRight(onRight, flipped);
 
-        slideIntoPlace(bottomGroup, toolbarFrom);
-        slideIntoPlace(dpadOverlay.getView(), dpadFrom);
+        slideIntoPlace(bottomGroup, toolbarStart);
+        slideIntoPlace(dpadOverlay.getView(), dpadStart);
     }
 
-    /** How far the view is about to jump, so the jump can be played as a slide.
-     *  Both edges keep the same margin, so the travel is whatever is left. */
-    private float slideOrigin(View view, int edgePx) {
-        if (view.getWidth() == 0) return 0f;
-        int travel = getWindow().getDecorView().getWidth() - view.getWidth() - edgePx * 2;
-        return (sidebarOnRight ? 1f : -1f) * travel;
+    /** The translation that leaves the view looking where it does now, once its
+     *  anchor has swapped sides — i.e. where the slide starts. Must be read
+     *  before the placement is mirrored, since that moves it too. */
+    private float slideStart(View view, int edgePx, int leadingInset) {
+        if (view.getWidth() == 0) return view.getTranslationX();
+        int jump = getWindow().getDecorView().getWidth() - view.getWidth()
+            - edgePx * 2 + leadingInset;
+        return view.getTranslationX() + (sidebarOnRight ? jump : -jump);
     }
 
-    private void slideIntoPlace(View view, float from) {
-        if (from == 0f) return;
+    private void slideIntoPlace(View view, float start) {
         float target = view.getTranslationX();
-        view.setTranslationX(target + from);
+        if (start == target) return;
+        view.setTranslationX(start);
         view.animate().translationX(target)
             .setDuration(HANDEDNESS_SLIDE_MS)
             .setInterpolator(new DecelerateInterpolator(1.5f))
@@ -184,27 +188,29 @@ public class BrogueActivity extends SDLActivity {
     private void layoutSideDependentViews() {
         int side = sidebarOnRight ? Gravity.START : Gravity.END;
 
+        int barEdge = dpToPx(EDGE_SAFE_DP);
         FrameLayout.LayoutParams bar =
             (FrameLayout.LayoutParams) bottomGroup.getLayoutParams();
         bar.gravity = Gravity.BOTTOM | side;
-        setSideMargin(bar, dpToPx(EDGE_SAFE_DP), 0);
+        bar.setMargins(sidebarOnRight ? barEdge : 0, 0,
+                       sidebarOnRight ? 0 : barEdge, 0);
         bottomGroup.setLayoutParams(bar);
 
+        // The pad's view overhangs its grid on the left, so anchoring it there
+        // has to discount that or the grid lands inset by it.
+        int padEdge = dpToPx(DPadOverlay.RIGHT_MARGIN_DP);
         View pad = dpadOverlay.getView();
         FrameLayout.LayoutParams padParams =
             (FrameLayout.LayoutParams) pad.getLayoutParams();
         padParams.gravity = Gravity.BOTTOM | side;
-        setSideMargin(padParams, dpToPx(DPadOverlay.RIGHT_MARGIN_DP),
+        padParams.setMargins(
+            sidebarOnRight ? padEdge - dpadOverlay.leadingInsetPx() : 0, 0,
+            sidebarOnRight ? 0 : padEdge,
             dpToPx(DPadOverlay.BOTTOM_MARGIN_DP));
         pad.setLayoutParams(padParams);
 
         refreshTransparentRegion(bottomGroup);
         refreshTransparentRegion(pad);
-    }
-
-    private void setSideMargin(FrameLayout.LayoutParams params, int edge, int bottom) {
-        params.setMargins(sidebarOnRight ? edge : 0, 0,
-                          sidebarOnRight ? 0 : edge, bottom);
     }
 
     /** Bottom popups (Settings, Exit, Actions) sit against the toolbar's edge,
