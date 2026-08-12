@@ -61,6 +61,12 @@ final class DPadOverlay {
      *  than overflowing at the smallest scale. */
     private static final int GLYPH_PAD_DP = 6;
 
+    /** Deliberately longer than the platform long-press, and fixed rather than
+     *  following the accessibility touch-and-hold delay. A finger resting on a
+     *  movement key between steps is normal, and arming on it costs the step
+     *  as well as the mode. */
+    private static final long EDIT_HOLD_MS = 1000L;
+
     private final BrogueActivity activity;
     private final Runnable onInteraction;
     private final DragGrid root;
@@ -83,6 +89,12 @@ final class DPadOverlay {
     /** Leaves edit mode if it is active, committing the current placement. */
     void exitEditMode() {
         root.endEdit();
+    }
+
+    /** Mirrors a hand-placed pad when the interface changes hands, so it keeps
+     *  the same spot relative to its now-opposite anchor. */
+    void mirrorPlacement() {
+        root.mirrorPlacement();
     }
 
     private int savedScalePct() {
@@ -284,7 +296,7 @@ final class DPadOverlay {
                 case MotionEvent.ACTION_DOWN:
                     downRawX = event.getRawX();
                     downRawY = event.getRawY();
-                    postDelayed(armEdit, ViewConfiguration.getLongPressTimeout());
+                    postDelayed(armEdit, EDIT_HOLD_MS);
                     return false;
                 case MotionEvent.ACTION_MOVE:
                     if (movedPastSlop(event)) removeCallbacks(armEdit);
@@ -377,6 +389,11 @@ final class DPadOverlay {
             // Everything outside the pad becomes the "done" target, and absorbs
             // the tap so it can't also reach the map as a travel-to.
             host.setOnClickListener(v -> endEdit());
+        }
+
+        void mirrorPlacement() {
+            setTranslationX(-getTranslationX());
+            persist();
         }
 
         void endEdit() {

@@ -77,6 +77,7 @@ short victoryFloodWeight[ROWS][COLS];
 // be converted through the screen positions they share.
 static int lastMapOffsetX, lastMapOffsetY, lastMapZoomW, lastMapZoomH;
 static int lastScreenW, lastScreenH;
+static SDL_Rect lastSidebarRect;
 
 void getScreenPixelSize(int *w, int *h) {
     *w = lastScreenW;
@@ -91,6 +92,68 @@ void getDungeonViewport(int *x, int *y, int *w, int *h) {
     *y = lastMapOffsetY;
     *w = lastMapZoomW;
     *h = lastMapZoomH;
+}
+
+// Handedness flip: the sidebar accelerates out through the edge it used to hug,
+// then eases back in from the opposite one, rather than sliding across the map.
+#define SIDEBAR_SLIDE_MS    210.0f
+#define SIDEBAR_SLIDE_EXIT  0.4f
+
+static Uint64 sidebarSlideStart = 0;
+static float sidebarSlidePanFrom = 0.0f;
+static boolean sidebarSlidePanCaptured = false;
+
+void beginSidebarSlide(void) {
+    sidebarSlideStart = SDL_GetTicks64();
+    // The pan to ease away from is sampled on the render thread's first frame
+    // of the slide; this one runs on Android's UI thread.
+    sidebarSlidePanCaptured = false;
+}
+
+static float easeCubicOut(float t) {
+    float inv = 1.0f - t;
+    return 1.0f - inv * inv * inv;
+}
+
+// Progress through the handedness slide, or -1 when none is running. Call once
+// a frame: it clears the slide when the time is up.
+static float sidebarSlideProgress(void) {
+    if (!sidebarSlideStart) return -1.0f;
+
+    float t = (SDL_GetTicks64() - sidebarSlideStart) / SIDEBAR_SLIDE_MS;
+    if (t >= 1.0f) {
+        sidebarSlideStart = 0;
+        return -1.0f;
+    }
+    return t;
+}
+
+// Offset from the sidebar's resting position for the given slide progress.
+static int sidebarSlideOffset(float t, int screenW, int sidebarW) {
+    if (t < 0.0f) return 0;
+
+    // Where it sat before the flip, and just past either edge — all relative to
+    // where it rests now.
+    int fromOld = androidSidebarOnRight ? -(screenW - sidebarW) : screenW - sidebarW;
+    int pastOld = androidSidebarOnRight ? -screenW : screenW;
+    int pastNew = androidSidebarOnRight ? sidebarW : -sidebarW;
+
+    if (t < SIDEBAR_SLIDE_EXIT) {
+        float u = t / SIDEBAR_SLIDE_EXIT;
+        return fromOld + (int)((pastOld - fromOld) * u * u);
+    }
+
+    float u = (t - SIDEBAR_SLIDE_EXIT) / (1.0f - SIDEBAR_SLIDE_EXIT);
+    return (int)(pastNew * (1.0f - easeCubicOut(u)));
+}
+
+// Screen rect of the stats sidebar, so input can tell a touch on it apart from
+// a touch on the map behind it. Empty until the first gameplay frame.
+void getSidebarRect(int *x, int *y, int *w, int *h) {
+    *x = lastSidebarRect.x;
+    *y = lastSidebarRect.y;
+    *w = lastSidebarRect.w;
+    *h = lastSidebarRect.h;
 }
 
 void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow) {
@@ -888,6 +951,10 @@ void updateScreen() {
         : CAMERA_REFERENCE_FRAME_MS;
     cameraLastUpdateCounter = cameraUpdateCounter;
 
+    // Sampled once a frame: both the sidebar's own slide and the camera's
+    // re-centring ride this one timeline.
+    float sidebarSlide = sidebarSlideProgress();
+
     float effectiveZoom = (renderMode != RENDER_TITLE) ? androidZoomLevel : 1.0f;
     boolean inGame = (renderMode != RENDER_TITLE);
 
@@ -926,11 +993,15 @@ void updateScreen() {
             centerY = ROWS / 2;
         }
         // With the D-Pad up, centre the player in the strip left free between
-        // the sidebar and the pad instead of on the whole screen.
+        // the sidebar and the pad instead of on the whole screen. The two are
+        // always on opposite edges, so handedness just swaps which is which.
         float focusX = screenW / 2.0f;
         if (inGame && androidDpadReservedWidthPx > 0) {
-            float sidebarRight = (float)STAT_BAR_WIDTH * fitW / COLS;
-            focusX = (sidebarRight + screenW - androidDpadReservedWidthPx) / 2.0f;
+            float sidebar = (float)STAT_BAR_WIDTH * fitW / COLS;
+            float pad = (float)androidDpadReservedWidthPx;
+            focusX = androidSidebarOnRight
+                ? (pad + screenW - sidebar) / 2.0f
+                : (sidebar + screenW - pad) / 2.0f;
         }
 
         float targetPanX = focusX - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
@@ -942,7 +1013,21 @@ void updateScreen() {
             androidPanOverride = false;
         } else {
             float followLerp = cameraFollowAlpha(cameraElapsedMs);
-            androidPanX += (targetPanX - androidPanX) * followLerp;
+
+            if (sidebarSlide >= 0.0f) {
+                // The interface is changing hands. The follow ease is
+                // open-ended and would still be catching up long after the
+                // sidebar has landed, so ride the slide's timeline instead.
+                if (!sidebarSlidePanCaptured) {
+                    sidebarSlidePanFrom = androidPanX;
+                    sidebarSlidePanCaptured = true;
+                }
+                androidPanX = sidebarSlidePanFrom
+                    + (targetPanX - sidebarSlidePanFrom) * easeCubicOut(sidebarSlide);
+            } else {
+                androidPanX += (targetPanX - androidPanX) * followLerp;
+            }
+
             androidPanY += (targetPanY - androidPanY) * followLerp;
         }
     }
@@ -952,16 +1037,31 @@ void updateScreen() {
     int cx = (screenW - zoomW) / 2 + (int)roundf(androidPanX);
     int cy = (screenH - zoomH) / 2 + (int)roundf(androidPanY);
 
-    // The D-Pad ends the playfield early: without this the map's east edge only
-    // stops at the screen edge, and a player in the last columns keeps sliding
-    // right until they are sitting underneath the pad.
+    // The sidebar and the D-Pad are both opaque and always sit on opposite
+    // edges, so the dungeon has to stay within the strip they leave free.
+    // Without this a player against a map edge keeps sliding across until they
+    // are underneath one of them.
+    //
+    // The bounds are the drawn dungeon's edges, not the grid's: the grid
+    // carries STAT_BAR_WIDTH blank columns on its left that are already enough
+    // to clear a left-hand sidebar, and none on its right.
+    int dungeonInset = (STAT_BAR_WIDTH + 1) * zoomW / COLS;
+    int playfieldLeft = 0;
     int playfieldRight = screenW;
-    if (inGame && androidDpadReservedWidthPx > 0) {
-        playfieldRight -= androidDpadReservedWidthPx;
+    if (inGame) {
+        int sidebarW = STAT_BAR_WIDTH * fitW / COLS;
+        playfieldLeft = androidSidebarOnRight ? androidDpadReservedWidthPx : sidebarW;
+        playfieldRight = screenW
+            - (androidSidebarOnRight ? sidebarW : androidDpadReservedWidthPx);
+    } else {
+        dungeonInset = 0;
     }
 
     // Clamp pan
-    if (cx > 0) { androidPanX -= cx; cx = 0; }
+    if (cx + dungeonInset > playfieldLeft) {
+        androidPanX -= cx + dungeonInset - playfieldLeft;
+        cx = playfieldLeft - dungeonInset;
+    }
     if (cy > 0) { androidPanY -= cy; cy = 0; }
     if (cx + zoomW < playfieldRight) {
         androidPanX += playfieldRight - (cx + zoomW);
@@ -1008,18 +1108,22 @@ void updateScreen() {
     }
 
     // Pass 2: render the UI layer (uiTiles)
-    // Sidebar columns are pinned flush-left; everything else is centered.
+    // Sidebar columns hug their screen edge; everything else is centered.
     if (inGame && effectiveZoom > 1.0f) {
         int uiW = fitW;
         int uiH = fitH;
         int uiBaseX = (screenW - uiW) / 2;
         int uiBaseY = (screenH - uiH) / 2;
 
+        int sidebarW = STAT_BAR_WIDTH * uiW / COLS;
+        int sidebarX = (androidSidebarOnRight ? screenW - sidebarW : 0)
+                     + sidebarSlideOffset(sidebarSlide, screenW, sidebarW);
+        lastSidebarRect = (SDL_Rect){sidebarX, uiBaseY, sidebarW, uiH};
+
         // Opaque black background behind the sidebar so the dungeon doesn't show through
         {
-            SDL_Rect sidebarBg = {0, uiBaseY, STAT_BAR_WIDTH * uiW / COLS, uiH};
             if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255) < 0) sdlfatal(__FILE__, __LINE__);
-            if (SDL_RenderFillRect(renderer, &sidebarBg) < 0) sdlfatal(__FILE__, __LINE__);
+            if (SDL_RenderFillRect(renderer, &lastSidebarRect) < 0) sdlfatal(__FILE__, __LINE__);
         }
 
         for (int step = -1; step < numTextures; step++) {
@@ -1027,9 +1131,9 @@ void updateScreen() {
                 int tileWidth = ((x+1) * uiW / COLS) - (x * uiW / COLS);
                 if (tileWidth == 0) continue;
 
-                // Sidebar columns render flush-left, others centered
+                // Sidebar columns render against their edge, others centered
                 int destX = (x < STAT_BAR_WIDTH)
-                    ? x * uiW / COLS
+                    ? sidebarX + x * uiW / COLS
                     : uiBaseX + x * uiW / COLS;
 
                 for (int y = 0; y < ROWS; y++) {

@@ -89,11 +89,8 @@ final class ExitPanel {
         int panelWidth = Math.min(activity.dpToPx(280),
             (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.6f));
 
-        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
-            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, activity.dpToPx(8),
-            activity.dpToPx(BrogueActivity.EDGE_SAFE_DP), activity.dpToPx(52));
+        FrameLayout.LayoutParams scrollParams =
+            activity.toolbarSidePanelParams(panelWidth, 52);
 
         host.addView(scrollView, scrollParams);
         host.setVisibility(View.VISIBLE);

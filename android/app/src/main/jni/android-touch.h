@@ -59,10 +59,15 @@ boolean androidTwoFingerActive(void);
  * degrade into taps) but no longer emit a direction keystroke. */
 extern volatile boolean androidSwipeMovementEnabled;
 
-/* Width the D-Pad occupies on the right of the screen at its default position,
- * or 0 when it is hidden. The gameplay camera centres the player in the strip
- * this leaves free, so a repositioned pad keeps the default bias. */
+/* Width the D-Pad occupies at its default position, or 0 when it is hidden. The
+ * gameplay camera centres the player in the strip this leaves free, so a
+ * repositioned pad keeps the default bias. */
 extern volatile int androidDpadReservedWidthPx;
+
+/* Left-handed layout: the sidebar hugs the right edge and the toolbar and D-Pad
+ * move to the left. Everything that has a side — sidebar, camera bias, pan
+ * clamp — mirrors on this one flag. */
+extern volatile boolean androidSidebarOnRight;
 
 /* When true, snap the camera to the player immediately instead of tweening.
  * Set on game load; consumed after the first frame. */

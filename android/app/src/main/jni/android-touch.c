@@ -55,9 +55,14 @@ static float curFinger2X, curFinger2Y;
 static boolean pendingMouseUp = false;
 static int pendingUpX, pendingUpY;
 
+/* The sidebar is opaque UI, not a window onto the map: gestures that start on
+ * it never reach the dungeon. */
+static boolean startedOnSidebar = false;
+
 void androidResetTouchState(void) {
     state = TOUCH_IDLE;
     pendingMouseUp = false;
+    startedOnSidebar = false;
 }
 
 boolean androidTwoFingerActive(void) {
@@ -451,6 +456,7 @@ boolean androidCameraSnap = false;
 boolean androidPanOverride = false;
 volatile boolean androidSwipeMovementEnabled = true;
 volatile int androidDpadReservedWidthPx = 0;
+volatile boolean androidSidebarOnRight = false;
 
 JNIEXPORT void JNICALL
 Java_org_broguece_game_BrogueActivity_nativeSetDpadMovement(
@@ -459,11 +465,38 @@ Java_org_broguece_game_BrogueActivity_nativeSetDpadMovement(
     androidDpadReservedWidthPx = enabled ? reservedWidthPx : 0;
 }
 
+JNIEXPORT void JNICALL
+Java_org_broguece_game_BrogueActivity_nativeSetSidebarOnRight(
+        JNIEnv *env, jobject thiz, jboolean onRight, jboolean animate) {
+    androidSidebarOnRight = onRight ? true : false;
+    if (animate) beginSidebarSlide();
+}
+
 /* ---- Helpers ---- */
 
 static float dist(float x1, float y1, float x2, float y2) {
     float dx = x2 - x1, dy = y2 - y1;
     return sqrtf(dx * dx + dy * dy);
+}
+
+static boolean pointInSidebar(float px, float py) {
+    int x, y, w, h;
+    getSidebarRect(&x, &y, &w, &h);
+    return w > 0 && h > 0
+        && px >= x && px < x + w
+        && py >= y && py < y + h;
+}
+
+/* Tells Java the player swiped the sidebar off its edge. Java owns the setting,
+ * flips its own side-dependent views, and hands the new side back down. */
+static void androidHandednessSwiped(void) {
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID mid = (*env)->GetMethodID(env, cls, "onHandednessSwiped", "()V");
+    if (mid) (*env)->CallVoidMethod(env, activity, mid);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
 }
 
 static void cellFromPixel(float px, float py, int *cx, int *cy) {
@@ -558,6 +591,7 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
                 startX = px;
                 startY = py;
                 startTime = event->tfinger.timestamp;
+                startedOnSidebar = pointInSidebar(px, py);
             } else {
                 /* Second finger while first is still down */
                 state = TOUCH_TWO_FINGER;
@@ -583,7 +617,7 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             Uint32 elapsed = event->tfinger.timestamp - startTime;
             float moved = dist(startX, startY, px, py);
 
-            if (elapsed >= LONG_PRESS_MS) {
+            if (!startedOnSidebar && elapsed >= LONG_PRESS_MS) {
                 /* Held long enough — enter inspect mode */
                 state = TOUCH_INSPECTING;
                 int cx, cy;
@@ -637,7 +671,7 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             Uint32 elapsed = event->tfinger.timestamp - startTime;
             float moved = dist(startX, startY, px, py);
 
-            if (moved <= TAP_MAX_MOVE_PX && elapsed < LONG_PRESS_MS) {
+            if (!startedOnSidebar && moved <= TAP_MAX_MOVE_PX && elapsed < LONG_PRESS_MS) {
                 /* Tap → left click (down now, up queued) */
                 int cx, cy;
                 cellFromPixel(startX, startY, &cx, &cy);
@@ -660,6 +694,17 @@ boolean androidTouchEvent(SDL_Event *event, rogueEvent *out) {
             /* Swipe → arrow key (8-directional) */
             float dx = px - startX;
             float dy = py - startY;
+
+            if (startedOnSidebar) {
+                /* Shoving the sidebar out through its own edge sends it — and
+                 * the rest of the interface — to the other side. */
+                if (fabsf(dx) > fabsf(dy) && fabsf(dx) >= SWIPE_THRESHOLD_PX
+                        && (androidSidebarOnRight ? dx > 0 : dx < 0)) {
+                    androidHandednessSwiped();
+                }
+                state = TOUCH_IDLE;
+                return false;
+            }
 
             if (androidSwipeMovementEnabled
                     && dist(startX, startY, px, py) >= SWIPE_THRESHOLD_PX) {

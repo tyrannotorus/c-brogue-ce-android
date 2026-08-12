@@ -6,6 +6,8 @@ import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewParent;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -20,8 +22,14 @@ public class BrogueActivity extends SDLActivity {
      *  where the navigation bar area is reserved even in immersive mode. */
     static final int EDGE_SAFE_DP = 48;
 
+    /** Matches the sidebar's own slide in the renderer. */
+    private static final int HANDEDNESS_SLIDE_MS = 210;
+
+    private static final String PREF_SIDEBAR_ON_RIGHT = "sidebar_on_right";
+
     // Overlay roots — allocated in onCreate, shared with feature classes.
     FrameLayout gameOverlay;
+    private View bottomGroup;
     FrameLayout inventoryOverlay;
     private View loadingOverlay;
     private View transitionVeil;
@@ -83,7 +91,7 @@ public class BrogueActivity extends SDLActivity {
 
         actionsToolbar = new ActionsToolbar(this, gameOverlay, inventoryOverlay,
             settingsPanel::show, exitPanel::show, this::setSubmenuOpen);
-        View bottomGroup = actionsToolbar.build();
+        bottomGroup = actionsToolbar.build();
 
         // Added before the toolbar: the hamburger submenu expands into the
         // pad's default slot, and must draw and take touches above it.
@@ -104,6 +112,7 @@ public class BrogueActivity extends SDLActivity {
 
         applyMovementMode(GameSettings.getInt(this, DPadOverlay.PREF_MOVEMENT_MODE,
             DPadOverlay.MOVEMENT_SWIPE));
+        applyHandedness(GameSettings.getBool(this, PREF_SIDEBAR_ON_RIGHT), false);
 
         achievementToast = new AchievementToast(this, gameOverlay);
         // Listener fires on the StatsStore handler thread; marshal to UI.
@@ -114,6 +123,100 @@ public class BrogueActivity extends SDLActivity {
 
     private boolean dpadMovement;
     private boolean submenuOpen;
+    private boolean sidebarOnRight;
+
+    /** Called from C when the player swipes the sidebar off its own edge.
+     *  Arrives on the engine thread. */
+    public void onHandednessSwiped() {
+        runOnUiThread(() -> applyHandedness(!sidebarOnRight, true));
+    }
+
+    /** Mirrors the whole interface. The sidebar and the toolbar/D-Pad always
+     *  live on opposite edges, so one flag drives both sides — and the C
+     *  renderer's camera bias with them. */
+    private void applyHandedness(boolean onRight, boolean persist) {
+        sidebarOnRight = onRight;
+        if (persist) GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
+
+        float toolbarFrom = slideOrigin(bottomGroup, dpToPx(EDGE_SAFE_DP), onRight);
+        float dpadFrom = slideOrigin(dpadOverlay.getView(),
+            dpToPx(DPadOverlay.RIGHT_MARGIN_DP), onRight);
+
+        actionsToolbar.setMirrored(onRight);
+        dpadOverlay.exitEditMode();
+        dpadOverlay.mirrorPlacement();
+        layoutSideDependentViews();
+        // Only a deliberate flip animates; restoring the setting at launch
+        // should already be in place.
+        nativeSetSidebarOnRight(onRight, persist);
+
+        slideIntoPlace(bottomGroup, toolbarFrom);
+        slideIntoPlace(dpadOverlay.getView(), dpadFrom);
+    }
+
+    /** How far the view is about to jump, so the jump can be played as a slide.
+     *  Both edges keep the same margin, so the travel is whatever is left. */
+    private float slideOrigin(View view, int edgePx, boolean onRight) {
+        if (view.getWidth() == 0) return 0f;
+        int travel = getWindow().getDecorView().getWidth() - view.getWidth() - edgePx * 2;
+        return (onRight ? 1f : -1f) * travel;
+    }
+
+    private void slideIntoPlace(View view, float from) {
+        if (from == 0f) return;
+        float target = view.getTranslationX();
+        view.setTranslationX(target + from);
+        view.animate().translationX(target)
+            .setDuration(HANDEDNESS_SLIDE_MS)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .setUpdateListener(a -> refreshTransparentRegion(view))
+            .start();
+    }
+
+    /** The game's SurfaceView shows through wherever the window is transparent,
+     *  and that region is only recomputed on layout. A view that moves without
+     *  one — or faster than one — stays invisible until something else redraws. */
+    private void refreshTransparentRegion(View view) {
+        ViewParent parent = view.getParent();
+        if (parent != null) parent.requestTransparentRegion(view);
+    }
+
+    private void layoutSideDependentViews() {
+        int side = sidebarOnRight ? Gravity.START : Gravity.END;
+
+        FrameLayout.LayoutParams bar =
+            (FrameLayout.LayoutParams) bottomGroup.getLayoutParams();
+        bar.gravity = Gravity.BOTTOM | side;
+        setSideMargin(bar, dpToPx(EDGE_SAFE_DP), 0);
+        bottomGroup.setLayoutParams(bar);
+
+        View pad = dpadOverlay.getView();
+        FrameLayout.LayoutParams padParams =
+            (FrameLayout.LayoutParams) pad.getLayoutParams();
+        padParams.gravity = Gravity.BOTTOM | side;
+        setSideMargin(padParams, dpToPx(DPadOverlay.RIGHT_MARGIN_DP),
+            dpToPx(DPadOverlay.BOTTOM_MARGIN_DP));
+        pad.setLayoutParams(padParams);
+
+        refreshTransparentRegion(bottomGroup);
+        refreshTransparentRegion(pad);
+    }
+
+    private void setSideMargin(FrameLayout.LayoutParams params, int edge, int bottom) {
+        params.setMargins(sidebarOnRight ? edge : 0, 0,
+                          sidebarOnRight ? 0 : edge, bottom);
+    }
+
+    /** Bottom popups (Settings, Exit, Actions) sit against the toolbar's edge. */
+    FrameLayout.LayoutParams toolbarSidePanelParams(int width, int bottomDp) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            width, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | (sidebarOnRight ? Gravity.START : Gravity.END));
+        int edge = dpToPx(EDGE_SAFE_DP);
+        params.setMargins(sidebarOnRight ? edge : 0, dpToPx(8),
+                          sidebarOnRight ? 0 : edge, dpToPx(bottomDp));
+        return params;
+    }
 
     /** Applies the Movement setting. D-Pad mode shows the pad and stops swipes
      *  from producing direction keys, so the two can't both drive movement.
@@ -397,6 +500,7 @@ public class BrogueActivity extends SDLActivity {
     native long nativeGetSeed();
     native void nativeDeleteSaveFile();
     native void nativeSetDpadMovement(boolean enabled, int reservedWidthPx);
+    native void nativeSetSidebarOnRight(boolean onRight, boolean animate);
 
     // ---- Navigation ------------------------------------------------------
 

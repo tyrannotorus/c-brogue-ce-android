@@ -69,8 +69,10 @@ final class ActionsToolbar {
     private final Runnable onExitClicked;
     private final java.util.function.Consumer<Boolean> onSubmenuVisibleChanged;
 
+    private LinearLayout bottomGroup;
     private LinearLayout toolbarContainer;
     private LinearLayout submenu;
+    private boolean mirrored;
     private View menuBtn;
     private View submenuBackdrop;
     private java.util.List<String> cachedActionOrder;
@@ -141,7 +143,7 @@ final class ActionsToolbar {
         int barPad = dp(BAR_PAD_DP);
         toolbarContainer.setPadding(barPad, barPad, barPad, barPad);
 
-        LinearLayout bottomGroup = new LinearLayout(activity);
+        bottomGroup = new LinearLayout(activity);
         bottomGroup.setOrientation(LinearLayout.VERTICAL);
         bottomGroup.setGravity(Gravity.END);
         bottomGroup.addView(submenu, new LinearLayout.LayoutParams(
@@ -152,6 +154,18 @@ final class ActionsToolbar {
 
         rebuildToolbar();
         return bottomGroup;
+    }
+
+    /** Lays the bar out for a left-handed interface: it hugs the opposite edge
+     *  and the buttons reverse, so the menu stays on the outside. */
+    void setMirrored(boolean mirrored) {
+        this.mirrored = mirrored;
+        int side = mirrored ? Gravity.START : Gravity.END;
+
+        bottomGroup.setGravity(side);
+        toolbarContainer.setGravity(side | Gravity.CENTER_VERTICAL);
+        toolbarContainer.setBackground(makeBarBackground());
+        rebuildToolbar();
     }
 
     /** Dismisses the submenu if open. No-op otherwise. */
@@ -325,17 +339,21 @@ final class ActionsToolbar {
                 });
             }
 
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(btnSize, btnSize);
-            p.setMargins(btnMargin, 0, btnMargin, 0);
-            toolbarContainer.addView(btn, p);
+            addBarButton(btn, btnSize, btnMargin);
         }
 
         if (menuBtn.getParent() != null) {
             ((ViewGroup) menuBtn.getParent()).removeView(menuBtn);
         }
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(btnSize, btnSize);
-        mp.setMargins(btnMargin, 0, btnMargin, 0);
-        toolbarContainer.addView(menuBtn, mp);
+        addBarButton(menuBtn, btnSize, btnMargin);
+    }
+
+    private void addBarButton(View btn, int size, int margin) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(size, size);
+        p.setMargins(margin, 0, margin, 0);
+        // Prepending mirrors the row, so it still reads outward from the edge
+        // the bar is against.
+        toolbarContainer.addView(btn, mirrored ? 0 : -1, p);
     }
 
     private View findToolbarButton(String key) {
@@ -418,10 +436,8 @@ final class ActionsToolbar {
         int panelWidth = Math.min(dp(280),
             (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.6f));
 
-        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
-            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, dp(8), dp(BrogueActivity.EDGE_SAFE_DP), dp(52));
+        FrameLayout.LayoutParams scrollParams =
+            activity.toolbarSidePanelParams(panelWidth, 52);
 
         inventoryOverlay.addView(scrollView, scrollParams);
         inventoryOverlay.setVisibility(View.VISIBLE);
@@ -803,7 +819,8 @@ final class ActionsToolbar {
 
     private GradientDrawable makeBarBackground() {
         GradientDrawable bg = new GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
+            mirrored ? GradientDrawable.Orientation.RIGHT_LEFT
+                     : GradientDrawable.Orientation.LEFT_RIGHT,
             new int[]{ Color.TRANSPARENT, Palette.VOID_BLACK, Palette.VOID_BLACK });
         bg.setCornerRadius(0);
         return bg;
