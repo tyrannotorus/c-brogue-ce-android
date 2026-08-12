@@ -43,6 +43,13 @@ final class ActionsToolbar {
      *  same rhythm. */
     static final int BTN_MARGIN_DP = 3;
 
+    static final int BTN_SIZE_DP = 44;
+    private static final int BTN_PAD_DP = 10;
+
+    /** Size an icon actually renders at inside a bar button. The D-Pad draws
+     *  its glyphs at the same size so the two sets match. */
+    static final int ICON_DP = BTN_SIZE_DP - BTN_PAD_DP * 2;
+
     private static final String PREFS        = "brogue_toolbar";
     private static final String PREF_PINNED  = "pinned_actions";
     private static final String PREF_ORDER   = "action_order";
@@ -312,7 +319,7 @@ final class ActionsToolbar {
         toolbarContainer.removeAllViews();
 
         java.util.Set<String> pinned = getPinned();
-        int btnSize = dp(44);
+        int btnSize = dp(BTN_SIZE_DP);
         int btnMargin = dp(BTN_MARGIN_DP);
 
         for (String key : getActionOrder()) {
@@ -389,7 +396,7 @@ final class ActionsToolbar {
 
         LinearLayout panel = new LinearLayout(activity);
         panel.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(10);
+        int pad = dp(BTN_PAD_DP);
         panel.setPadding(pad, pad, pad, pad);
 
         GradientDrawable panelBg = new GradientDrawable();

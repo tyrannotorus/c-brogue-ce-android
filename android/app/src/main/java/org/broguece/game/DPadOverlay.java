@@ -49,9 +49,17 @@ final class DPadOverlay {
     /** How near the default slot a drag has to land to click back into it. */
     private static final int SNAP_TO_DEFAULT_DP = 20;
 
-    // The floor keeps the pad big enough to grab and scale back up; the ceiling
-    // keeps it and its bottom margin inside a landscape phone's short edge.
-    private static final int MIN_SCALE_PCT = 50;
+    /** Smallest cell allowed: a toolbar button plus its margins, so the pad's
+     *  buttons never shrink below the bar's and the shared icon size starts to
+     *  look cramped. */
+    private static final int MIN_CELL_DP =
+        ActionsToolbar.BTN_SIZE_DP + ActionsToolbar.BTN_MARGIN_DP * 2;
+
+    /** Floor scale holding a cell at MIN_CELL_DP, rounded up so it cannot land
+     *  a pixel under. The ceiling keeps the pad and its bottom margin inside a
+     *  landscape phone's short edge. */
+    private static final int MIN_SCALE_PCT =
+        (MIN_CELL_DP * 3 * 100 + SIZE_DP - 1) / SIZE_DP;
     private static final int MAX_SCALE_PCT = 150;
 
     private static final int HANDLE_DP = 22;
@@ -62,10 +70,6 @@ final class DPadOverlay {
      *  without the margin only the inward half would be targetable. */
     private static final int HANDLE_TOUCH_DP = 60;
     private static final int GRID_LINE_DP = 1;
-
-    /** Breathing room around a cell's glyph, so it shrinks with the pad rather
-     *  than overflowing at the smallest scale. */
-    private static final int GLYPH_PAD_DP = 6;
 
     /** Deliberately longer than the platform long-press, and fixed rather than
      *  following the accessibility touch-and-hold delay. A finger resting on a
@@ -153,7 +157,9 @@ final class DPadOverlay {
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         int margin = activity.dpToPx(ActionsToolbar.BTN_MARGIN_DP);
-        int glyphPad = activity.dpToPx(GLYPH_PAD_DP);
+        // Fixed, not proportional: the glyphs stay the size of the toolbar's
+        // however far the pad is scaled.
+        int glyphPx = activity.dpToPx(ActionsToolbar.ICON_DP);
 
         for (Cell cell : cells) {
 
@@ -161,10 +167,9 @@ final class DPadOverlay {
             // rotation would take the background with it.
             ImageView glyph = new ImageView(activity);
             glyph.setImageResource(cell.center
-                ? R.drawable.ic_dpad_center : R.drawable.ic_dpad_arrow);
+                ? R.drawable.ic_hourglass_empty : R.drawable.ic_arrow_forward);
             glyph.setColorFilter(Palette.PALE_BLUE);
-            glyph.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            glyph.setPadding(glyphPad, glyphPad, glyphPad, glyphPad);
+            glyph.setScaleType(ImageView.ScaleType.FIT_CENTER);
             glyph.setRotation(cell.rotationDegrees);
 
             // Same chrome as a toolbar action button, so the pad reads as more
@@ -184,8 +189,7 @@ final class DPadOverlay {
                 KeyInput.sendChar(activity, cell.command);
             });
             button.addView(glyph, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
+                glyphPx, glyphPx, Gravity.CENTER));
 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
