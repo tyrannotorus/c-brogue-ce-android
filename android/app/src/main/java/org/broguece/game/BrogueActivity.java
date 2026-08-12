@@ -6,6 +6,8 @@ import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewParent;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -20,8 +22,14 @@ public class BrogueActivity extends SDLActivity {
      *  where the navigation bar area is reserved even in immersive mode. */
     static final int EDGE_SAFE_DP = 48;
 
+    /** Matches the sidebar's own slide in the renderer. */
+    private static final int HANDEDNESS_SLIDE_MS = 210;
+
+    private static final String PREF_SIDEBAR_ON_RIGHT = "sidebar_on_right";
+
     // Overlay roots — allocated in onCreate, shared with feature classes.
     FrameLayout gameOverlay;
+    private View bottomGroup;
     FrameLayout inventoryOverlay;
     private View loadingOverlay;
     private View transitionVeil;
@@ -46,6 +54,7 @@ public class BrogueActivity extends SDLActivity {
     private SettingsPanel settingsPanel;
     private ExitPanel exitPanel;
     private ActionsToolbar actionsToolbar;
+    private DPadOverlay dpadOverlay;
     private InventoryOverlay inventoryRenderer;
     private DiscoveriesOverlay discoveriesRenderer;
     TextInputDialog textInputDialog;
@@ -81,8 +90,19 @@ public class BrogueActivity extends SDLActivity {
         textInputDialog = new TextInputDialog(this);
 
         actionsToolbar = new ActionsToolbar(this, gameOverlay, inventoryOverlay,
-            settingsPanel::show, exitPanel::show);
-        View bottomGroup = actionsToolbar.build();
+            settingsPanel::show, exitPanel::show, this::setSubmenuOpen);
+        bottomGroup = actionsToolbar.build();
+
+        // Added before the toolbar: the hamburger submenu expands into the
+        // pad's default slot, and must draw and take touches above it.
+        dpadOverlay = new DPadOverlay(this, gameOverlay, actionsToolbar::collapseSubmenu);
+        int dpadSize = dpadOverlay.sizePx();
+        FrameLayout.LayoutParams dpadParams = new FrameLayout.LayoutParams(
+            dpadSize, dpadSize, Gravity.BOTTOM | Gravity.END);
+        dpadParams.setMargins(0, 0, dpToPx(DPadOverlay.RIGHT_MARGIN_DP),
+            dpToPx(DPadOverlay.BOTTOM_MARGIN_DP));
+        gameOverlay.addView(dpadOverlay.getView(), dpadParams);
+
         FrameLayout.LayoutParams bottomParams = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -90,11 +110,138 @@ public class BrogueActivity extends SDLActivity {
         bottomParams.setMargins(0, 0, dpToPx(EDGE_SAFE_DP), 0);
         gameOverlay.addView(bottomGroup, bottomParams);
 
+        applyMovementMode(GameSettings.getInt(this, DPadOverlay.PREF_MOVEMENT_MODE,
+            DPadOverlay.MOVEMENT_SWIPE));
+        applyHandedness(GameSettings.getBool(this, PREF_SIDEBAR_ON_RIGHT), false);
+
         achievementToast = new AchievementToast(this, gameOverlay);
         // Listener fires on the StatsStore handler thread; marshal to UI.
         StatsStore.get(this).setUnlockListener(
             a -> runOnUiThread(() -> achievementToast.show(a)));
 
+    }
+
+    private boolean dpadMovement;
+    private boolean submenuOpen;
+    private boolean sidebarOnRight;
+
+    /** Called from C when the player swipes the sidebar off its own edge.
+     *  Arrives on the engine thread. */
+    public void onHandednessSwiped() {
+        runOnUiThread(() -> applyHandedness(!sidebarOnRight, true));
+    }
+
+    /** Mirrors the interface. The sidebar and the toolbar/D-Pad always sit on
+     *  opposite edges, so one flag drives both, and the renderer's bias with them. */
+    private void applyHandedness(boolean onRight, boolean flipped) {
+        sidebarOnRight = onRight;
+
+        float toolbarStart = slideStart(bottomGroup, dpToPx(EDGE_SAFE_DP), 0);
+        float dpadStart = slideStart(dpadOverlay.getView(),
+            dpToPx(DPadOverlay.RIGHT_MARGIN_DP), dpadOverlay.leadingInsetPx());
+
+        actionsToolbar.setMirrored(onRight);
+        // Only on a real flip; at launch the saved placement is already correct.
+        if (flipped) {
+            GameSettings.setBool(this, PREF_SIDEBAR_ON_RIGHT, onRight);
+            dpadOverlay.exitEditMode();
+            dpadOverlay.mirrorPlacement();
+        }
+        layoutSideDependentViews();
+        nativeSetSidebarOnRight(onRight, flipped);
+
+        slideIntoPlace(bottomGroup, toolbarStart);
+        slideIntoPlace(dpadOverlay.getView(), dpadStart);
+    }
+
+    /** Where the slide starts: the translation that leaves the view looking where
+     *  it does now, once the anchor has swapped. Must be read before mirroring. */
+    private float slideStart(View view, int edgePx, int leadingInset) {
+        if (view.getWidth() == 0) return view.getTranslationX();
+        int jump = getWindow().getDecorView().getWidth() - view.getWidth()
+            - edgePx * 2 + leadingInset;
+        return view.getTranslationX() + (sidebarOnRight ? jump : -jump);
+    }
+
+    private void slideIntoPlace(View view, float start) {
+        float target = view.getTranslationX();
+        if (start == target) return;
+        view.setTranslationX(start);
+        view.animate().translationX(target)
+            .setDuration(HANDEDNESS_SLIDE_MS)
+            .setInterpolator(new DecelerateInterpolator(1.5f))
+            .setUpdateListener(a -> refreshTransparentRegion(view))
+            .start();
+    }
+
+    /** The window's transparent region, which the game's SurfaceView shows
+     *  through, is only recomputed on layout — a view that moves without one
+     *  stays invisible. */
+    private void refreshTransparentRegion(View view) {
+        ViewParent parent = view.getParent();
+        if (parent != null) parent.requestTransparentRegion(view);
+    }
+
+    private void layoutSideDependentViews() {
+        int side = sidebarOnRight ? Gravity.START : Gravity.END;
+
+        int barEdge = dpToPx(EDGE_SAFE_DP);
+        FrameLayout.LayoutParams bar =
+            (FrameLayout.LayoutParams) bottomGroup.getLayoutParams();
+        bar.gravity = Gravity.BOTTOM | side;
+        bar.setMargins(sidebarOnRight ? barEdge : 0, 0,
+                       sidebarOnRight ? 0 : barEdge, 0);
+        bottomGroup.setLayoutParams(bar);
+
+        // The pad's view overhangs its grid on the left; anchoring there discounts it.
+        int padEdge = dpToPx(DPadOverlay.RIGHT_MARGIN_DP);
+        View pad = dpadOverlay.getView();
+        FrameLayout.LayoutParams padParams =
+            (FrameLayout.LayoutParams) pad.getLayoutParams();
+        padParams.gravity = Gravity.BOTTOM | side;
+        padParams.setMargins(
+            sidebarOnRight ? padEdge - dpadOverlay.leadingInsetPx() : 0, 0,
+            sidebarOnRight ? 0 : padEdge,
+            dpToPx(DPadOverlay.BOTTOM_MARGIN_DP));
+        pad.setLayoutParams(padParams);
+
+        refreshTransparentRegion(bottomGroup);
+        refreshTransparentRegion(pad);
+    }
+
+    /** Bottom popups (Settings, Exit, Actions) sit against the toolbar's edge,
+     *  clearing the bar itself. */
+    FrameLayout.LayoutParams toolbarSidePanelParams(int width) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            width, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | (sidebarOnRight ? Gravity.START : Gravity.END));
+        int edge = dpToPx(EDGE_SAFE_DP);
+        params.setMargins(sidebarOnRight ? edge : 0, dpToPx(8),
+                          sidebarOnRight ? 0 : edge, dpToPx(52));
+        return params;
+    }
+
+    /** D-Pad mode shows the pad and stops swipes producing direction keys. The
+     *  camera bias is measured from the pad's default slot, not its current one. */
+    void applyMovementMode(int mode) {
+        dpadMovement = mode == DPadOverlay.MOVEMENT_DPAD;
+        updateDpadVisibility();
+        nativeSetDpadMovement(dpadMovement,
+            dpToPx(DPadOverlay.SIZE_DP + DPadOverlay.RIGHT_MARGIN_DP));
+    }
+
+    /** The hamburger submenu expands into the pad's default slot, so the pad
+     *  steps aside for as long as it is up. */
+    private void setSubmenuOpen(boolean open) {
+        submenuOpen = open;
+        updateDpadVisibility();
+    }
+
+    private void updateDpadVisibility() {
+        boolean visible = dpadMovement && !submenuOpen;
+        // Hiding the pad mid-edit would strand gameOverlay swallowing every tap.
+        if (!visible) dpadOverlay.exitEditMode();
+        dpadOverlay.getView().setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     @Override
@@ -353,6 +500,8 @@ public class BrogueActivity extends SDLActivity {
     native void nativeTextInputResult(boolean confirmed, String text);
     native long nativeGetSeed();
     native void nativeDeleteSaveFile();
+    native void nativeSetDpadMovement(boolean enabled, int reservedWidthPx);
+    native void nativeSetSidebarOnRight(boolean onRight, boolean animate);
 
     // ---- Navigation ------------------------------------------------------
 

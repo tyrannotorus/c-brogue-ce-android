@@ -22,6 +22,13 @@ static int modalNestCount = 0;
 #define TEXT_BASELINE  46   // height (px) of the blank space below the 'x' outline
 #define MAX_TILE_SIZE  64   // maximum width or height (px) of screen tiles before we switch to linear interpolation
 
+// Camera follow speed, expressed as the fraction of the remaining distance
+// covered in one CAMERA_REFERENCE_FRAME_MS frame. The per-frame alpha is
+// rescaled from the real elapsed time so the follow feels identical at any
+// refresh rate.
+#define CAMERA_FOLLOW_LERP          0.15f
+#define CAMERA_REFERENCE_FRAME_MS   36.0
+
 
 // How each tile should be processed:
 //  -  's' = stretch: tile stretches to fill the space
@@ -70,10 +77,83 @@ short victoryFloodWeight[ROWS][COLS];
 // be converted through the screen positions they share.
 static int lastMapOffsetX, lastMapOffsetY, lastMapZoomW, lastMapZoomH;
 static int lastScreenW, lastScreenH;
+static SDL_Rect lastSidebarRect;
 
 void getScreenPixelSize(int *w, int *h) {
     *w = lastScreenW;
     *h = lastScreenH;
+}
+
+// The rectangle the dungeon layer was last drawn into. Input maps touches back
+// to cells through this rather than re-deriving the zoom and pan clamps, which
+// silently drift apart from the ones the renderer actually applied.
+void getDungeonViewport(int *x, int *y, int *w, int *h) {
+    *x = lastMapOffsetX;
+    *y = lastMapOffsetY;
+    *w = lastMapZoomW;
+    *h = lastMapZoomH;
+}
+
+// Handedness flip: the sidebar accelerates out through the edge it used to hug,
+// then eases back in from the opposite one, rather than sliding across the map.
+#define SIDEBAR_SLIDE_MS    210.0f
+#define SIDEBAR_SLIDE_EXIT  0.4f
+
+static Uint64 sidebarSlideStart = 0;
+static float sidebarSlidePanFrom = 0.0f;
+static boolean sidebarSlidePanCaptured = false;
+
+void beginSidebarSlide(void) {
+    sidebarSlideStart = SDL_GetTicks64();
+    // The pan to ease away from is sampled on the render thread's first frame
+    // of the slide; this one runs on Android's UI thread.
+    sidebarSlidePanCaptured = false;
+}
+
+static float easeCubicOut(float t) {
+    float inv = 1.0f - t;
+    return 1.0f - inv * inv * inv;
+}
+
+// Progress through the handedness slide, or -1 when none is running. Call once
+// a frame: it clears the slide when the time is up.
+static float sidebarSlideProgress(void) {
+    if (!sidebarSlideStart) return -1.0f;
+
+    float t = (SDL_GetTicks64() - sidebarSlideStart) / SIDEBAR_SLIDE_MS;
+    if (t >= 1.0f) {
+        sidebarSlideStart = 0;
+        return -1.0f;
+    }
+    return t;
+}
+
+// Offset from the sidebar's resting position for the given slide progress.
+static int sidebarSlideOffset(float t, int screenW, int sidebarW) {
+    if (t < 0.0f) return 0;
+
+    // Where it sat before the flip, and just past either edge — all relative to
+    // where it rests now.
+    int fromOld = androidSidebarOnRight ? -(screenW - sidebarW) : screenW - sidebarW;
+    int pastOld = androidSidebarOnRight ? -screenW : screenW;
+    int pastNew = androidSidebarOnRight ? sidebarW : -sidebarW;
+
+    if (t < SIDEBAR_SLIDE_EXIT) {
+        float u = t / SIDEBAR_SLIDE_EXIT;
+        return fromOld + (int)((pastOld - fromOld) * u * u);
+    }
+
+    float u = (t - SIDEBAR_SLIDE_EXIT) / (1.0f - SIDEBAR_SLIDE_EXIT);
+    return (int)(pastNew * (1.0f - easeCubicOut(u)));
+}
+
+// Screen rect of the stats sidebar, so input can tell a touch on it apart from
+// a touch on the map behind it. Empty until the first gameplay frame.
+void getSidebarRect(int *x, int *y, int *w, int *h) {
+    *x = lastSidebarRect.x;
+    *y = lastSidebarRect.y;
+    *w = lastSidebarRect.w;
+    *h = lastSidebarRect.h;
 }
 
 void floodCellToDungeonCell(int col, int row, int *outCol, int *outRow) {
@@ -102,6 +182,21 @@ void dungeonCellToFloodCell(int col, int row, int *outCol, int *outRow) {
     int gy = (int)(sy * ROWS / lastScreenH);
     *outCol = max(0, min(COLS - 1, gx));
     *outRow = max(0, min(ROWS - 1, gy));
+}
+
+// Performance counter at the last rendered frame; 0 means "no previous frame".
+// A long stall (backgrounding, level load) makes the alpha saturate at 1, which
+// snaps the camera to the player — the same thing the stall should produce.
+static Uint64 cameraLastUpdateCounter = 0;
+
+// Fraction of the remaining distance to cover this frame, rescaled from the
+// reference frame so the camera follows at the same speed at any refresh rate.
+static float cameraFollowAlpha(double elapsedMs) {
+    if (elapsedMs <= 0.0) return 0.0f;
+
+    float alpha = 1.0f - powf(1.0f - CAMERA_FOLLOW_LERP,
+                              (float)(elapsedMs / CAMERA_REFERENCE_FRAME_MS));
+    return alpha > 1.0f ? 1.0f : alpha;
 }
 
 boolean plotToUiLayer = false; // set by commitDraws/refreshScreen to route plotChar → updateTile
@@ -807,7 +902,11 @@ void updateScreen() {
 
     SDL_Renderer *renderer = SDL_GetRenderer(Win);
     if (!renderer) {
-        renderer = SDL_CreateRenderer(Win, -1, (softwareRendering ? SDL_RENDERER_SOFTWARE : 0));
+        Uint32 rendererFlags = (softwareRendering ? SDL_RENDERER_SOFTWARE : 0);
+        // Vsync paces the idle render loop, which is what makes the camera
+        // follow and two-finger pan advance in even steps.
+        renderer = SDL_CreateRenderer(Win, -1, rendererFlags | SDL_RENDERER_PRESENTVSYNC);
+        if (!renderer) renderer = SDL_CreateRenderer(Win, -1, rendererFlags);
         if (!renderer) sdlfatal(__FILE__, __LINE__);
 
         if (SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE) < 0) sdlfatal(__FILE__, __LINE__);
@@ -843,6 +942,18 @@ void updateScreen() {
         SDL_RenderPresent(renderer);
         return;
     }
+
+    Uint64 cameraUpdateCounter = SDL_GetPerformanceCounter();
+    Uint64 performanceFrequency = SDL_GetPerformanceFrequency();
+    double cameraElapsedMs = cameraLastUpdateCounter && performanceFrequency
+        ? (double)(cameraUpdateCounter - cameraLastUpdateCounter) * 1000.0
+            / (double)performanceFrequency
+        : CAMERA_REFERENCE_FRAME_MS;
+    cameraLastUpdateCounter = cameraUpdateCounter;
+
+    // Sampled once a frame: both the sidebar's own slide and the camera's
+    // re-centring ride this one timeline.
+    float sidebarSlide = sidebarSlideProgress();
 
     float effectiveZoom = (renderMode != RENDER_TITLE) ? androidZoomLevel : 1.0f;
     boolean inGame = (renderMode != RENDER_TITLE);
@@ -881,7 +992,19 @@ void updateScreen() {
             centerX = COLS / 2;
             centerY = ROWS / 2;
         }
-        float targetPanX = screenW / 2.0f - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
+        // With the D-Pad up, centre the player in the strip left free between
+        // the sidebar and the pad instead of on the whole screen. The two are
+        // always on opposite edges, so handedness just swaps which is which.
+        float focusX = screenW / 2.0f;
+        if (inGame && androidDpadReservedWidthPx > 0) {
+            float sidebar = (float)STAT_BAR_WIDTH * fitW / COLS;
+            float pad = (float)androidDpadReservedWidthPx;
+            focusX = androidSidebarOnRight
+                ? (pad + screenW - sidebar) / 2.0f
+                : (sidebar + screenW - pad) / 2.0f;
+        }
+
+        float targetPanX = focusX - (centerX + 0.5f) * zoomW / COLS - (screenW - zoomW) / 2.0f;
         float targetPanY = screenH / 2.0f - (centerY + 0.5f) * zoomH / ROWS - (screenH - zoomH) / 2.0f;
         if (androidCameraSnap) {
             androidPanX = targetPanX;
@@ -889,18 +1012,57 @@ void updateScreen() {
             androidCameraSnap = false;
             androidPanOverride = false;
         } else {
-            androidPanX += (targetPanX - androidPanX) * 0.15f;
-            androidPanY += (targetPanY - androidPanY) * 0.15f;
+            float followLerp = cameraFollowAlpha(cameraElapsedMs);
+
+            if (sidebarSlide >= 0.0f) {
+                // The interface is changing hands. The follow ease is
+                // open-ended and would still be catching up long after the
+                // sidebar has landed, so ride the slide's timeline instead.
+                if (!sidebarSlidePanCaptured) {
+                    sidebarSlidePanFrom = androidPanX;
+                    sidebarSlidePanCaptured = true;
+                }
+                androidPanX = sidebarSlidePanFrom
+                    + (targetPanX - sidebarSlidePanFrom) * easeCubicOut(sidebarSlide);
+            } else {
+                androidPanX += (targetPanX - androidPanX) * followLerp;
+            }
+
+            androidPanY += (targetPanY - androidPanY) * followLerp;
         }
     }
 
-    int cx = (screenW - zoomW) / 2 + (int)androidPanX;
-    int cy = (screenH - zoomH) / 2 + (int)androidPanY;
+    // Round rather than truncate: truncation biases toward zero, so the
+    // viewport jumps a pixel as the pan crosses the origin.
+    int cx = (screenW - zoomW) / 2 + (int)roundf(androidPanX);
+    int cy = (screenH - zoomH) / 2 + (int)roundf(androidPanY);
+
+    // The sidebar and D-Pad are opaque and sit on opposite edges, so the dungeon
+    // stays within the strip they leave free. Bounds are the drawn dungeon's
+    // edges, not the grid's: the grid's blank left columns already clear a
+    // left-hand sidebar, and it has none on the right.
+    int dungeonInset = (STAT_BAR_WIDTH + 1) * zoomW / COLS;
+    int playfieldLeft = 0;
+    int playfieldRight = screenW;
+    if (inGame) {
+        int sidebarW = STAT_BAR_WIDTH * fitW / COLS;
+        playfieldLeft = androidSidebarOnRight ? androidDpadReservedWidthPx : sidebarW;
+        playfieldRight = screenW
+            - (androidSidebarOnRight ? sidebarW : androidDpadReservedWidthPx);
+    } else {
+        dungeonInset = 0;
+    }
 
     // Clamp pan
-    if (cx > 0) { androidPanX -= cx; cx = 0; }
+    if (cx + dungeonInset > playfieldLeft) {
+        androidPanX -= cx + dungeonInset - playfieldLeft;
+        cx = playfieldLeft - dungeonInset;
+    }
     if (cy > 0) { androidPanY -= cy; cy = 0; }
-    if (cx + zoomW < screenW) { androidPanX += screenW - (cx + zoomW); cx = screenW - zoomW; }
+    if (cx + zoomW < playfieldRight) {
+        androidPanX += playfieldRight - (cx + zoomW);
+        cx = playfieldRight - zoomW;
+    }
     if (cy + zoomH < screenH) { androidPanY += screenH - (cy + zoomH); cy = screenH - zoomH; }
 
     if (effectiveZoom <= 1.0f) {
@@ -942,18 +1104,22 @@ void updateScreen() {
     }
 
     // Pass 2: render the UI layer (uiTiles)
-    // Sidebar columns are pinned flush-left; everything else is centered.
+    // Sidebar columns hug their screen edge; everything else is centered.
     if (inGame && effectiveZoom > 1.0f) {
         int uiW = fitW;
         int uiH = fitH;
         int uiBaseX = (screenW - uiW) / 2;
         int uiBaseY = (screenH - uiH) / 2;
 
+        int sidebarW = STAT_BAR_WIDTH * uiW / COLS;
+        int sidebarX = (androidSidebarOnRight ? screenW - sidebarW : 0)
+                     + sidebarSlideOffset(sidebarSlide, screenW, sidebarW);
+        lastSidebarRect = (SDL_Rect){sidebarX, uiBaseY, sidebarW, uiH};
+
         // Opaque black background behind the sidebar so the dungeon doesn't show through
         {
-            SDL_Rect sidebarBg = {0, uiBaseY, STAT_BAR_WIDTH * uiW / COLS, uiH};
             if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255) < 0) sdlfatal(__FILE__, __LINE__);
-            if (SDL_RenderFillRect(renderer, &sidebarBg) < 0) sdlfatal(__FILE__, __LINE__);
+            if (SDL_RenderFillRect(renderer, &lastSidebarRect) < 0) sdlfatal(__FILE__, __LINE__);
         }
 
         for (int step = -1; step < numTextures; step++) {
@@ -961,9 +1127,9 @@ void updateScreen() {
                 int tileWidth = ((x+1) * uiW / COLS) - (x * uiW / COLS);
                 if (tileWidth == 0) continue;
 
-                // Sidebar columns render flush-left, others centered
+                // Sidebar columns render against their edge, others centered
                 int destX = (x < STAT_BAR_WIDTH)
-                    ? x * uiW / COLS
+                    ? sidebarX + x * uiW / COLS
                     : uiBaseX + x * uiW / COLS;
 
                 for (int y = 0; y < ROWS; y++) {

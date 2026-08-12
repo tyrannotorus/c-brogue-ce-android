@@ -1,0 +1,15 @@
+<!-- Material Symbols "arrow_forward", outlined. Points right; the pad rotates
+     it for the other seven directions. Source viewBox is "0 -960 960 960" and
+     vector drawables have no viewBox offset, so the group shifts it rather
+     than the path being rewritten by hand. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <group android:translateY="960">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M647-440H160v-80h487L423-744l57-56 320 320-320 320-57-56 224-224Z"/>
+    </group>
+</vector>

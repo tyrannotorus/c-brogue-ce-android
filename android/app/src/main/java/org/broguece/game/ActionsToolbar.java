@@ -36,6 +36,20 @@ import org.json.JSONArray;
  *  construction; everything else is internal. */
 final class ActionsToolbar {
 
+    /** Padding between the bar's edge and the button row. */
+    static final int BAR_PAD_DP = 4;
+
+    /** Spacing around each bar button; shared so other controls can sit on the
+     *  same rhythm. */
+    static final int BTN_MARGIN_DP = 3;
+
+    static final int BTN_SIZE_DP = 44;
+    private static final int BTN_PAD_DP = 10;
+
+    /** Size an icon actually renders at inside a bar button. The D-Pad draws
+     *  its glyphs at the same size so the two sets match. */
+    static final int ICON_DP = BTN_SIZE_DP - BTN_PAD_DP * 2;
+
     private static final String PREFS        = "brogue_toolbar";
     private static final String PREF_PINNED  = "pinned_actions";
     private static final String PREF_ORDER   = "action_order";
@@ -60,9 +74,12 @@ final class ActionsToolbar {
     private final FrameLayout inventoryOverlay;  // host for the Actions panel
     private final Runnable onSettingsClicked;
     private final Runnable onExitClicked;
+    private final java.util.function.Consumer<Boolean> onSubmenuVisibleChanged;
 
+    private LinearLayout bottomGroup;
     private LinearLayout toolbarContainer;
     private LinearLayout submenu;
+    private boolean mirrored;
     private View menuBtn;
     private View submenuBackdrop;
     private java.util.List<String> cachedActionOrder;
@@ -71,12 +88,14 @@ final class ActionsToolbar {
                    FrameLayout gameOverlay,
                    FrameLayout inventoryOverlay,
                    Runnable onSettingsClicked,
-                   Runnable onExitClicked) {
+                   Runnable onExitClicked,
+                   java.util.function.Consumer<Boolean> onSubmenuVisibleChanged) {
         this.activity = activity;
         this.gameOverlay = gameOverlay;
         this.inventoryOverlay = inventoryOverlay;
         this.onSettingsClicked = onSettingsClicked;
         this.onExitClicked = onExitClicked;
+        this.onSubmenuVisibleChanged = onSubmenuVisibleChanged;
     }
 
     // ---- Public surface -----------------------------------------------------
@@ -128,10 +147,10 @@ final class ActionsToolbar {
         toolbarContainer.setOrientation(LinearLayout.HORIZONTAL);
         toolbarContainer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         toolbarContainer.setBackground(makeBarBackground());
-        int barPad = dp(4);
+        int barPad = dp(BAR_PAD_DP);
         toolbarContainer.setPadding(barPad, barPad, barPad, barPad);
 
-        LinearLayout bottomGroup = new LinearLayout(activity);
+        bottomGroup = new LinearLayout(activity);
         bottomGroup.setOrientation(LinearLayout.VERTICAL);
         bottomGroup.setGravity(Gravity.END);
         bottomGroup.addView(submenu, new LinearLayout.LayoutParams(
@@ -144,6 +163,18 @@ final class ActionsToolbar {
         return bottomGroup;
     }
 
+    /** Lays the bar out for a left-handed interface: it hugs the opposite edge
+     *  and the buttons reverse, so the menu stays on the outside. */
+    void setMirrored(boolean mirrored) {
+        this.mirrored = mirrored;
+        int side = mirrored ? Gravity.START : Gravity.END;
+
+        bottomGroup.setGravity(side);
+        toolbarContainer.setGravity(side | Gravity.CENTER_VERTICAL);
+        toolbarContainer.setBackground(makeBarBackground());
+        rebuildToolbar();
+    }
+
     /** Dismisses the submenu if open. No-op otherwise. */
     void collapseSubmenu() {
         if (submenu == null || submenu.getVisibility() != View.VISIBLE) return;
@@ -153,7 +184,12 @@ final class ActionsToolbar {
         submenu.animate()
             .alpha(0f).translationY(dp(6))
             .setDuration(100)
-            .withEndAction(() -> submenu.setVisibility(View.GONE))
+            .withEndAction(() -> {
+                submenu.setVisibility(View.GONE);
+                // Reported at the end of the fade, so whatever stepped aside
+                // for the submenu doesn't reappear underneath it.
+                onSubmenuVisibleChanged.accept(false);
+            })
             .start();
         animateToggle(menuBtn, false);
     }
@@ -283,8 +319,8 @@ final class ActionsToolbar {
         toolbarContainer.removeAllViews();
 
         java.util.Set<String> pinned = getPinned();
-        int btnSize = dp(44);
-        int btnMargin = dp(3);
+        int btnSize = dp(BTN_SIZE_DP);
+        int btnMargin = dp(BTN_MARGIN_DP);
 
         for (String key : getActionOrder()) {
             if (!pinned.contains(key)) continue;
@@ -310,17 +346,21 @@ final class ActionsToolbar {
                 });
             }
 
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(btnSize, btnSize);
-            p.setMargins(btnMargin, 0, btnMargin, 0);
-            toolbarContainer.addView(btn, p);
+            addBarButton(btn, btnSize, btnMargin);
         }
 
         if (menuBtn.getParent() != null) {
             ((ViewGroup) menuBtn.getParent()).removeView(menuBtn);
         }
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(btnSize, btnSize);
-        mp.setMargins(btnMargin, 0, btnMargin, 0);
-        toolbarContainer.addView(menuBtn, mp);
+        addBarButton(menuBtn, btnSize, btnMargin);
+    }
+
+    private void addBarButton(View btn, int size, int margin) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(size, size);
+        p.setMargins(margin, 0, margin, 0);
+        // Prepending mirrors the row, so it still reads outward from the edge
+        // the bar is against.
+        toolbarContainer.addView(btn, mirrored ? 0 : -1, p);
     }
 
     private View findToolbarButton(String key) {
@@ -356,7 +396,7 @@ final class ActionsToolbar {
 
         LinearLayout panel = new LinearLayout(activity);
         panel.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(10);
+        int pad = dp(BTN_PAD_DP);
         panel.setPadding(pad, pad, pad, pad);
 
         GradientDrawable panelBg = new GradientDrawable();
@@ -403,10 +443,8 @@ final class ActionsToolbar {
         int panelWidth = Math.min(dp(280),
             (int)(activity.getResources().getDisplayMetrics().widthPixels * 0.6f));
 
-        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(
-            panelWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM | Gravity.END);
-        scrollParams.setMargins(0, dp(8), dp(BrogueActivity.EDGE_SAFE_DP), dp(52));
+        FrameLayout.LayoutParams scrollParams =
+            activity.toolbarSidePanelParams(panelWidth);
 
         inventoryOverlay.addView(scrollView, scrollParams);
         inventoryOverlay.setVisibility(View.VISIBLE);
@@ -645,6 +683,7 @@ final class ActionsToolbar {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT));
 
+        onSubmenuVisibleChanged.accept(true);
         submenu.setAlpha(0f);
         submenu.setTranslationY(dp(8));
         submenu.setVisibility(View.VISIBLE);
@@ -787,7 +826,8 @@ final class ActionsToolbar {
 
     private GradientDrawable makeBarBackground() {
         GradientDrawable bg = new GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT,
+            mirrored ? GradientDrawable.Orientation.RIGHT_LEFT
+                     : GradientDrawable.Orientation.LEFT_RIGHT,
             new int[]{ Color.TRANSPARENT, Palette.VOID_BLACK, Palette.VOID_BLACK });
         bg.setCornerRadius(0);
         return bg;

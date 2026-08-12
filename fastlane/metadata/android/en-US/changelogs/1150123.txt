@@ -1,0 +1,6 @@
+- Map scrolling and camera follow are now smooth
+- New Movement setting: Swipe or D-Pad
+- Long-press the D-Pad to move or resize it; drop it near its default spot to reset
+- Swipe the sidebar toward its edge to switch between left- and right-handed layouts
+- Taps on the sidebar no longer reach the map
+- The map no longer scrolls under the sidebar or D-Pad
